@@ -10,6 +10,11 @@ import type { Settings } from '@/data/types';
 export function SiteFooter() {
   const { lang } = useLanguage();
   const [settings, setSettings] = React.useState<Settings | null>(null);
+  const [currentYear, setCurrentYear] = React.useState<number | null>(null);
+
+  React.useEffect(() => {
+    setCurrentYear(new Date().getFullYear());
+  }, []);
 
   React.useEffect(() => {
     getSettings().then(setSettings).catch(() => {});
@@ -66,7 +71,7 @@ export function SiteFooter() {
         </div>
 
         <div className="mt-8 border-t pt-6 text-center text-xs text-muted-foreground">
-          © {new Date().getFullYear()} {lang === 'ar' ? 'سوق الإلكترونيات' : 'Electronics Souk'}
+          © {currentYear ?? ''} {lang === 'ar' ? 'سوق الإلكترونيات' : 'Electronics Souk'}
         </div>
       </div>
     </footer>

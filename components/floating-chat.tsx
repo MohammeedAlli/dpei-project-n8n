@@ -1,192 +1,135 @@
 'use client';
 
 import * as React from 'react';
-import { MessageCircle, X, Send, Bot, User } from 'lucide-react';
+import Link from 'next/link';
+import { usePathname } from 'next/navigation';
+import { AnimatePresence, motion } from 'framer-motion';
+import { Maximize2, Sparkles, X } from 'lucide-react';
 import { useLanguage } from '@/components/providers/language-provider';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import { Card } from '@/components/ui/card';
-import { Skeleton } from '@/components/ui/skeleton';
-import { formatEGP } from '@/lib/format';
-import { t } from '@/lib/i18n';
-import { getProducts } from '@/data/api';
-import type { ProductWithMeta } from '@/data/types';
+import { ChatPanel } from '@/components/chat/chat-panel';
+import { cn } from '@/lib/utils';
 
-type Message = {
-  role: 'user' | 'assistant';
-  content: string;
-  products?: ProductWithMeta[];
-};
-
-const STARTER_QUESTIONS_AR = [
-  'عايز أردوينو للمبتدئين',
-  'إيه أحسن حساس حرارة؟',
-  'محتاج موتور سيرفو لمشروع',
-  'في ESP32 متوفر؟',
-];
-
-const STARTER_QUESTIONS_EN = [
-  'I need an Arduino for beginners',
-  'What is the best temperature sensor?',
-  'I need a servo motor for a project',
-  'Is ESP32 available?',
-];
-
+/**
+ * Floating assistant. Placement rules so it never covers "Add to Cart":
+ *  - lives on the inline-END side, lifted to bottom-24 on phones (above bottom bars / safe area)
+ *  - slides out of the way while the user scrolls down on a phone, returns when scrolling stops
+ *  - hidden entirely on phones on product detail / cart / checkout pages, where Add to Cart & Checkout are primary
+ *  - hidden on /assistant (already there) and on the admin and shop dashboards
+ */
 export function FloatingChat() {
   const { lang } = useLanguage();
+  const pathname = usePathname() || '/';
   const [open, setOpen] = React.useState(false);
-  const [messages, setMessages] = React.useState<Message[]>([]);
-  const [input, setInput] = React.useState('');
-  const [busy, setBusy] = React.useState(false);
-  const scrollRef = React.useRef<HTMLDivElement>(null);
+  const [tip, setTip] = React.useState(false);
+  const [away, setAway] = React.useState(false);
+  const L = (ar: string, en: string) => (lang === 'ar' ? ar : en);
 
+  // hide-while-scrolling (phones only; CSS keeps it visible on sm+)
   React.useEffect(() => {
-    if (open && messages.length === 0) {
-      setMessages([{ role: 'assistant', content: t('assistant', 'welcome', lang) }]);
-    }
-  }, [open, lang, messages.length]);
+    let last = window.scrollY;
+    let t: ReturnType<typeof setTimeout>;
+    const on = () => {
+      const y = window.scrollY;
+      if (y > last + 6) setAway(true);
+      if (y < last - 6) setAway(false);
+      last = y;
+      clearTimeout(t);
+      t = setTimeout(() => setAway(false), 900);
+    };
+    window.addEventListener('scroll', on, { passive: true });
+    return () => {
+      window.removeEventListener('scroll', on);
+      clearTimeout(t);
+    };
+  }, []);
 
+  React.useEffect(() => setOpen(false), [pathname]);
   React.useEffect(() => {
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
-  }, [messages, busy]);
+    if (!open) return;
+    const k = (e: KeyboardEvent) => e.key === 'Escape' && setOpen(false);
+    window.addEventListener('keydown', k);
+    return () => window.removeEventListener('keydown', k);
+  }, [open]);
 
-  const send = async (text: string) => {
-    if (!text.trim() || busy) return;
-    setInput('');
-    setBusy(true);
-    setMessages((m) => [...m, { role: 'user', content: text }]);
-
+  // first-visit tooltip nudge, once per session
+  React.useEffect(() => {
     try {
-      const products = await getProducts({ search: text, sort: 'relevance', limit: 3 });
-      let content: string;
-      if (products.length === 0) {
-        content = lang === 'ar'
-          ? 'مقدرتش ألاقي مكونات مطابقة لبحثك. جرب كلمات تانية أو الـ SKU.'
-          : "I couldn't find components matching your search. Try other keywords or a SKU.";
-      } else {
-        content = lang === 'ar'
-          ? `لاقيت ${products.length} منتج ممكن ينفعك:`
-          : `I found ${products.length} products that may suit you:`;
-      }
-      setMessages((m) => [...m, { role: 'assistant', content, products }]);
+      if (sessionStorage.getItem('souk-chat-tip')) return;
+      const a = setTimeout(() => setTip(true), 2500);
+      const b = setTimeout(() => {
+        setTip(false);
+        sessionStorage.setItem('souk-chat-tip', '1');
+      }, 7500);
+      return () => {
+        clearTimeout(a);
+        clearTimeout(b);
+      };
     } catch {
-      setMessages((m) => [...m, { role: 'assistant', content: t('assistant', 'unavailable', lang) }]);
-    } finally {
-      setBusy(false);
+      /* ignore */
     }
-  };
+  }, []);
 
-  const starters = lang === 'ar' ? STARTER_QUESTIONS_AR : STARTER_QUESTIONS_EN;
-
-  if (!open) {
-    return (
-      <button
-        onClick={() => setOpen(true)}
-        className="fixed bottom-6 end-6 z-50 flex h-14 w-14 items-center justify-center rounded-full bg-accent text-accent-foreground shadow-lg transition-transform hover:scale-110"
-        aria-label={t('assistant', 'title', lang)}
-      >
-        <MessageCircle className="h-6 w-6" />
-      </button>
-    );
-  }
+  if (pathname.startsWith('/assistant') || /^\/(admin|shop)(\/|$)/.test(pathname)) return null;
+  const hideOnPhone = /^\/(products\/[^/]+|cart|checkout)/.test(pathname);
 
   return (
-    <div className="fixed bottom-6 end-6 z-50 flex h-[500px] max-h-[80vh] w-[380px] max-w-[calc(100vw-3rem)] flex-col rounded-xl border bg-card shadow-2xl">
-      {/* Header */}
-      <div className="flex items-center justify-between border-b p-3">
-        <div className="flex items-center gap-2">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-accent text-accent-foreground">
-            <Bot className="h-4 w-4" />
-          </div>
-          <span className="font-cairo text-sm font-bold">{t('assistant', 'title', lang)}</span>
-        </div>
-        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setOpen(false)}>
-          <X className="h-4 w-4" />
-        </Button>
-      </div>
+    <div className={cn('fixed end-4 z-popover bottom-[calc(6rem+env(safe-area-inset-bottom))] sm:end-6 sm:bottom-6', hideOnPhone && 'max-sm:hidden')}>
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            key="popup"
+            role="dialog"
+            aria-label={L('المساعد الذكي', 'AI Assistant')}
+            initial={{ opacity: 0, y: 16, scale: 0.96 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 16, scale: 0.96 }}
+            transition={{ type: 'spring', stiffness: 380, damping: 32 }}
+            style={{ transformOrigin: lang === 'ar' ? 'bottom left' : 'bottom right' }}
+            className="fixed inset-x-3 bottom-3 top-16 z-modal flex flex-col overflow-hidden rounded-xl border border-border bg-background shadow-3 sm:absolute sm:inset-x-auto sm:bottom-16 sm:top-auto sm:end-0 sm:h-[32rem] sm:max-h-[calc(100dvh-7rem)] sm:w-[24rem]"
+          >
+            <button type="button" onClick={() => setOpen(false)} aria-label={L('إغلاق', 'Close')} className="absolute end-2 top-2.5 z-10 rounded-full p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+              <X className="h-4 w-4" />
+            </button>
+            <Link href="/assistant" aria-label={L('افتح في صفحة كاملة', 'Open full page')} className="absolute end-10 top-2.5 z-10 rounded-full p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+              <Maximize2 className="h-4 w-4" />
+            </Link>
+            <ChatPanel compact className="h-full [&>div:first-child]:pe-20" />
+          </motion.div>
+        )}
+      </AnimatePresence>
 
-      {/* Messages */}
-      <ScrollArea className="flex-1 p-3" ref={scrollRef as never}>
-        <div className="space-y-3">
-          {messages.map((m, i) => (
-            <div key={i} className={`flex gap-2 ${m.role === 'user' ? 'flex-row-reverse' : ''}`}>
-              <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full ${
-                m.role === 'user' ? 'bg-muted' : 'bg-accent text-accent-foreground'
-              }`}>
-                {m.role === 'user' ? <User className="h-3.5 w-3.5" /> : <Bot className="h-3.5 w-3.5" />}
-              </div>
-              <div className={`max-w-[80%] rounded-lg p-2.5 text-xs ${
-                m.role === 'user' ? 'bg-primary text-primary-foreground' : 'bg-muted'
-              }`}>
-                {m.content}
-                {m.products && m.products.length > 0 && (
-                  <div className="mt-2 space-y-1.5 border-t border-border/40 pt-2">
-                    {m.products.map((p) => (
-                      <a
-                        key={p.id}
-                        href={`/products/${p.id}`}
-                        className="block rounded border border-border/50 bg-card p-1.5 hover:border-accent"
-                      >
-                        <div className="font-medium">{lang === 'ar' ? p.name_ar : p.name_en}</div>
-                        {p.lowest_price !== null && (
-                          <div className="text-accent font-bold">{formatEGP(p.lowest_price, lang)}</div>
-                        )}
-                      </a>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-          ))}
-          {busy && (
-            <div className="flex gap-2">
-              <div className="flex h-7 w-7 items-center justify-center rounded-full bg-accent text-accent-foreground">
-                <Bot className="h-3.5 w-3.5" />
-              </div>
-              <Skeleton className="h-7 w-24" />
-            </div>
+      <div className={cn('relative transition-all duration-base max-sm:data-[away=true]:pointer-events-none max-sm:data-[away=true]:translate-y-24 max-sm:data-[away=true]:opacity-0', open && 'max-sm:hidden')} data-away={away}>
+        <AnimatePresence>
+          {tip && !open && (
+            <motion.div
+              initial={{ opacity: 0, x: lang === 'ar' ? -8 : 8 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0 }}
+              role="tooltip"
+              className="glass pointer-events-none absolute bottom-2 end-16 hidden whitespace-nowrap rounded-md px-3 py-1.5 text-sm font-medium shadow-2 sm:block"
+            >
+              {L('اسأل المساعد الذكي', 'Ask the AI Assistant')}
+            </motion.div>
           )}
-          {/* Starter questions */}
-          {messages.length <= 1 && !busy && (
-            <div className="space-y-1.5 pt-2">
-              <div className="text-xs text-muted-foreground">
-                {lang === 'ar' ? 'أسئلة مقترحة:' : 'Suggested questions:'}
-              </div>
-              {starters.map((q, i) => (
-                <button
-                  key={i}
-                  onClick={() => send(q)}
-                  className="block w-full rounded-lg border border-border bg-card p-2 text-start text-xs hover:border-accent hover:bg-accent/5"
-                >
-                  {q}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-      </ScrollArea>
-
-      {/* Input */}
-      <div className="border-t p-2">
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            void send(input);
-          }}
-          className="flex gap-2"
+        </AnimatePresence>
+        <button
+          type="button"
+          onClick={() => setOpen((o) => !o)}
+          onMouseEnter={() => !open && setTip(true)}
+          onMouseLeave={() => setTip(false)}
+          onFocus={() => !open && setTip(true)}
+          onBlur={() => setTip(false)}
+          aria-expanded={open}
+          aria-label={L('اسأل المساعد الذكي', 'Ask the AI Assistant')}
+          className="group relative flex h-14 w-14 items-center justify-center rounded-full bg-brand-gradient text-primary-foreground shadow-glow-md transition-transform hover:scale-105 active:scale-95 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
         >
-          <Input
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            placeholder={t('assistant', 'placeholder', lang)}
-            disabled={busy}
-            className="h-9 text-sm"
-          />
-          <Button type="submit" size="icon" disabled={busy || !input.trim()} className="h-9 w-9 shrink-0">
-            <Send className="h-4 w-4" />
-          </Button>
-        </form>
+          {!open && <span aria-hidden className="absolute inset-0 animate-pulse-ring rounded-full bg-primary/50" />}
+          <AnimatePresence mode="wait" initial={false}>
+            <motion.span key={open ? 'x' : 's'} initial={{ rotate: -60, opacity: 0 }} animate={{ rotate: 0, opacity: 1 }} exit={{ rotate: 60, opacity: 0 }} transition={{ duration: 0.15 }} className="relative flex">
+              {open ? <X className="h-6 w-6" /> : <Sparkles className="h-6 w-6" />}
+            </motion.span>
+          </AnimatePresence>
+        </button>
       </div>
     </div>
   );

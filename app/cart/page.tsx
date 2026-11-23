@@ -12,9 +12,7 @@ import { Separator } from '@/components/ui/separator';
 import { formatEGP } from '@/lib/format';
 import { t } from '@/lib/i18n';
 import type { CartItem } from '@/lib/types';
-
-const SHOP_DELIVERY_DEFAULT = 40;
-const SHOP_FREE_THRESHOLD_DEFAULT = 500;
+import { useDeliveryRules } from '@/lib/delivery';
 
 type ShopGroup = {
   shopId: string;
@@ -26,6 +24,7 @@ type ShopGroup = {
 export default function CartPage() {
   const { lang, dir } = useLanguage();
   const { items, remove, setQty, ready } = useCart();
+  const { ruleFor, deliveryFor } = useDeliveryRules();
   const Arrow = dir === 'rtl' ? ArrowLeft : ArrowRight;
 
   const groups = React.useMemo(() => {
@@ -45,10 +44,7 @@ export default function CartPage() {
   }, [items]);
 
   const itemsTotal = groups.reduce((s, g) => s + g.subtotal, 0);
-  const deliveryTotal = groups.reduce((s, g) => {
-    if (g.subtotal >= SHOP_FREE_THRESHOLD_DEFAULT) return s;
-    return s + SHOP_DELIVERY_DEFAULT;
-  }, 0);
+  const deliveryTotal = groups.reduce((s, g) => s + deliveryFor(g.shopId, g.subtotal), 0);
   const grandTotal = itemsTotal + deliveryTotal;
 
   if (!ready) {
@@ -82,13 +78,12 @@ export default function CartPage() {
       <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
         <div className="space-y-4">
           {groups.map((group) => {
-            const delivery =
-              group.subtotal >= SHOP_FREE_THRESHOLD_DEFAULT
-                ? 0
-                : SHOP_DELIVERY_DEFAULT;
-            const remaining = SHOP_FREE_THRESHOLD_DEFAULT - group.subtotal;
+            const rule = ruleFor(group.shopId);
+            const delivery = deliveryFor(group.shopId, group.subtotal);
+            const remaining = rule.threshold - group.subtotal;
             const freeUnlocked = remaining <= 0;
-            const progressPct = Math.min(100, (group.subtotal / SHOP_FREE_THRESHOLD_DEFAULT) * 100);
+            const progressPct =
+              rule.threshold > 0 ? Math.min(100, (group.subtotal / rule.threshold) * 100) : 100;
 
             return (
               <Card key={group.shopId} className="overflow-hidden">

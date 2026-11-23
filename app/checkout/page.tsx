@@ -17,9 +17,7 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { formatEGP } from '@/lib/format';
 import { t } from '@/lib/i18n';
 import { createOrder } from '@/data/api';
-
-const SHOP_DELIVERY_DEFAULT = 40;
-const SHOP_FREE_THRESHOLD_DEFAULT = 500;
+import { useDeliveryRules } from '@/lib/delivery';
 
 const GOVERNORATE_KEYS = [
   'cairo', 'giza', 'alexandria', 'dakahlia', 'sharqia', 'qalyubia', 'beheira',
@@ -38,6 +36,7 @@ type ShopGroup = {
 export default function CheckoutPage() {
   const { lang, dir } = useLanguage();
   const { items, clear, ready } = useCart();
+  const { deliveryFor } = useDeliveryRules();
   const router = useRouter();
   const Arrow = dir === 'rtl' ? ArrowLeft : ArrowRight;
 
@@ -66,10 +65,7 @@ export default function CheckoutPage() {
   }, [items]);
 
   const itemsTotal = groups.reduce((s, g) => s + g.subtotal, 0);
-  const deliveryTotal = groups.reduce((s, g) => {
-    if (g.subtotal >= SHOP_FREE_THRESHOLD_DEFAULT) return s;
-    return s + SHOP_DELIVERY_DEFAULT;
-  }, 0);
+  const deliveryTotal = groups.reduce((s, g) => s + deliveryFor(g.shopId, g.subtotal), 0);
   const grandTotal = itemsTotal + deliveryTotal;
 
   const validatePhone = (val: string) => {
@@ -267,10 +263,7 @@ export default function CheckoutPage() {
             {/* Shop groups */}
             <div className="space-y-4">
               {groups.map((group) => {
-                const delivery =
-                  group.subtotal >= SHOP_FREE_THRESHOLD_DEFAULT
-                    ? 0
-                    : SHOP_DELIVERY_DEFAULT;
+                const delivery = deliveryFor(group.shopId, group.subtotal);
                 return (
                   <div key={group.shopId} className="space-y-2">
                     <div className="flex items-center gap-2 text-sm font-medium">

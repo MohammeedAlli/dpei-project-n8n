@@ -1,70 +1,89 @@
 'use client';
 
 import * as React from 'react';
+import { createBrowserSupabaseClient } from '@/utils/supabase/client';
 
 type AdminUser = {
   id: string;
   email: string;
+  /** true only when profiles.role === 'admin' (was: true for ANY signed-in user) */
   isAdmin: boolean;
+  role: string | null;
 };
+
+type Aal = 'aal1' | 'aal2' | null;
 
 type AdminContextValue = {
   user: AdminUser | null;
   loading: boolean;
-  signIn: (email: string, password: string) => Promise<{ error: string | null }>;
+  /** current assurance level of the session; admins need 'aal2' (TOTP verified) */
+  aal: Aal;
+  refresh: () => Promise<void>;
   signOut: () => Promise<void>;
 };
 
 const AdminContext = React.createContext<AdminContextValue | null>(null);
 
-const ADMIN_KEY = 'souk-admin-session';
-
 export function AdminProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = React.useState<AdminUser | null>(null);
+  const [aal, setAal] = React.useState<Aal>(null);
   const [loading, setLoading] = React.useState(true);
+  const supabase = React.useMemo(() => createBrowserSupabaseClient(), []);
+  const alive = React.useRef(true);
 
-  React.useEffect(() => {
-    try {
-      const raw = localStorage.getItem(ADMIN_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw) as AdminUser;
-        setUser(parsed);
+  const load = React.useCallback(
+    async (id: string | undefined, email: string | undefined) => {
+      if (!id) {
+        if (alive.current) {
+          setUser(null);
+          setAal(null);
+        }
+        return;
       }
-    } catch {
-      /* ignore */
-    }
-    setLoading(false);
-  }, []);
-
-  const signIn = React.useCallback(async (email: string, password: string) => {
-    await new Promise((r) => setTimeout(r, 400));
-    if (email === 'admin@souk.dev' && password === 'admin123') {
-      const adminUser: AdminUser = { id: 'mock-admin', email, isAdmin: true };
-      setUser(adminUser);
-      try {
-        localStorage.setItem(ADMIN_KEY, JSON.stringify(adminUser));
-      } catch {
-        /* ignore */
+      const { data: profile } = await supabase.from('profiles').select('role').eq('id', id).maybeSingle();
+      const role = (profile?.role as string | undefined) ?? null;
+      let level: Aal = null;
+      if (role === 'admin') {
+        const { data } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+        level = (data?.currentLevel as Aal) ?? null;
       }
-      return { error: null };
-    }
-    return { error: 'بيانات غير صحيحة' };
-  }, []);
-
-  const signOut = React.useCallback(async () => {
-    setUser(null);
-    try {
-      localStorage.removeItem(ADMIN_KEY);
-    } catch {
-      /* ignore */
-    }
-  }, []);
-
-  const value = React.useMemo(
-    () => ({ user, loading, signIn, signOut }),
-    [user, loading, signIn, signOut]
+      if (!alive.current) return;
+      setUser({ id, email: email ?? '', isAdmin: role === 'admin', role });
+      setAal(level);
+    },
+    [supabase]
   );
 
+  React.useEffect(() => {
+    alive.current = true;
+    supabase.auth.getUser().then(async ({ data }) => {
+      await load(data.user?.id, data.user?.email);
+      if (alive.current) setLoading(false);
+    });
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      // never call supabase.* directly inside this callback (can deadlock): defer it
+      setTimeout(() => void load(session?.user?.id, session?.user?.email), 0);
+    });
+    return () => {
+      alive.current = false;
+      subscription.unsubscribe();
+    };
+  }, [supabase, load]);
+
+  const refresh = React.useCallback(async () => {
+    const { data } = await supabase.auth.getUser();
+    await load(data.user?.id, data.user?.email);
+  }, [supabase, load]);
+
+  const signOut = React.useCallback(async () => {
+    await supabase.auth.signOut();
+    setUser(null);
+    setAal(null);
+  }, [supabase]);
+
+  const value = React.useMemo(() => ({ user, loading, aal, refresh, signOut }), [user, loading, aal, refresh, signOut]);
   return <AdminContext.Provider value={value}>{children}</AdminContext.Provider>;
 }
 

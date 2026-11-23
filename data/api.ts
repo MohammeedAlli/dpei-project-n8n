@@ -247,7 +247,12 @@ export async function createOrder(input: CreateOrderInput): Promise<{
     p_notes: input.notes ?? null,
     p_items: input.items.map((i) => ({ offer_id: i.offer_id, quantity: i.quantity })),
   });
-  if (error) throw new Error(error.message);
+  if (error) {
+    // P0001 = a message raised on purpose by create_order (safe, already in Arabic).
+    // Anything else (cast errors, constraint names, permissions…) stays out of the UI.
+    console.error('createOrder', error.code);
+    throw new Error(error.code === 'P0001' ? error.message : 'تعذر إنشاء الطلب، حاول تاني بعد شوية');
+  }
   return data as { code: string; grand_total: number; shipments_count: number };
 }
 
@@ -260,5 +265,7 @@ export async function getOrderByCodeAndPhone(
     p_phone: phone,
   });
   logError('getOrderByCodeAndPhone', error);
+  // the database answers {"locked": true} after too many wrong tries
+  if (data && typeof data === 'object' && (data as { locked?: boolean }).locked) throw new Error('rate_limited');
   return (data as OrderRecord | null) ?? null;
 }

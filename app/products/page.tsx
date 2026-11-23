@@ -2,254 +2,334 @@
 
 import * as React from 'react';
 import { useSearchParams } from 'next/navigation';
-import { SlidersHorizontal, SearchX } from 'lucide-react';
+import { AnimatePresence } from 'framer-motion';
+import { LayoutGrid, List, Search, SlidersHorizontal, X } from 'lucide-react';
 import { useLanguage } from '@/components/providers/language-provider';
-import { ProductCard } from '@/components/product-card';
-import { Input } from '@/components/ui/input';
+import { ProductCard, ProductCardSkeleton } from '@/components/product-card';
+import { FilterPanel, EMPTY_FILTERS, type Filters } from '@/components/products/filter-panel';
+import { EmptyState } from '@/components/products/empty-state';
+import { BottomSheet } from '@/components/ui/overlay';
 import { Button } from '@/components/ui/button';
-import { Card } from '@/components/ui/card';
-import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Checkbox } from '@/components/ui/checkbox';
+import { Chip } from '@/components/ui/chip';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { getCategories, getProducts, type ProductWithMeta } from '@/lib/catalog';
+import { findSharedImages } from '@/lib/product-images';
+import { formatEGP } from '@/lib/format';
 import { t } from '@/lib/i18n';
-import { getBrands, getCategories, getProducts, type ProductWithMeta } from '@/lib/catalog';
+import { cn } from '@/lib/utils';
 import type { Category } from '@/lib/types';
+
+type Sort = 'relevance' | 'lowest' | 'highest' | 'newest' | 'offers';
+const PAGE = 12;
 
 function ProductsContent() {
   const { lang } = useLanguage();
-  const searchParams = useSearchParams();
-  const initialCategory = searchParams.get('category') || 'all';
-  const initialQuery = searchParams.get('q') || '';
+  const L = (ar: string, en: string) => (lang === 'ar' ? ar : en);
+  const params = useSearchParams();
 
   const [categories, setCategories] = React.useState<Category[]>([]);
-  const [brands, setBrands] = React.useState<string[]>([]);
-  const [products, setProducts] = React.useState<ProductWithMeta[]>([]);
+  const [all, setAll] = React.useState<ProductWithMeta[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState(false);
 
-  const [query, setQuery] = React.useState(initialQuery);
-  const [category, setCategory] = React.useState(initialCategory);
-  const [brand, setBrand] = React.useState('all');
-  const [minPrice, setMinPrice] = React.useState('');
-  const [maxPrice, setMaxPrice] = React.useState('');
-  const [inStockOnly, setInStockOnly] = React.useState(false);
-  const [partnerOnly, setPartnerOnly] = React.useState(false);
-  const [sort, setSort] = React.useState<'lowest' | 'highest' | 'newest' | 'relevance'>('relevance');
+  const [filters, setFilters] = React.useState<Filters>(EMPTY_FILTERS);
+  const [debouncedQ, setDebouncedQ] = React.useState('');
+  const [sort, setSort] = React.useState<Sort>('relevance');
+  const [view, setView] = React.useState<'grid' | 'list'>('grid');
+  const [sheet, setSheet] = React.useState(false);
+  const [visible, setVisible] = React.useState(PAGE);
+  const [more, setMore] = React.useState(false);
+  const sentinel = React.useRef<HTMLDivElement>(null);
 
+  /* ---- categories once ---- */
   React.useEffect(() => {
-    let active = true;
-    (async () => {
-      try {
-        const [cats, brs] = await Promise.all([getCategories(), getBrands()]);
-        if (!active) return;
-        setCategories(cats);
-        setBrands(brs);
-      } catch {
-        /* non-fatal */
-      }
-    })();
-    return () => {
-      active = false;
-    };
+    getCategories().then(setCategories).catch(() => {});
   }, []);
 
+  /* ---- URL → state (nav search pushes /products?q=…, home links ?category=…&sort=…) ---- */
+  const urlQ = params.get('q') ?? '';
+  const urlCat = params.get('category');
+  const urlSort = params.get('sort');
   React.useEffect(() => {
-    setCategory(initialCategory);
-    setQuery(initialQuery);
-  }, [initialCategory, initialQuery]);
+    const cat = urlCat && urlCat !== 'all' ? categories.find((c) => c.id === urlCat || c.slug === urlCat) : null;
+    setFilters((f) => ({ ...f, query: urlQ, categories: urlCat === 'all' ? [] : cat ? [cat.id] : urlCat ? f.categories : [] }));
+    if (urlSort === 'lowest' || urlSort === 'highest' || urlSort === 'newest' || urlSort === 'offers') setSort(urlSort);
+  }, [urlQ, urlCat, urlSort, categories]);
 
+  /* ---- debounce the text query ---- */
   React.useEffect(() => {
-    let active = true;
-    const handle = setTimeout(async () => {
-      setLoading(true);
-      setError(false);
-      try {
-        const data = await getProducts({
-          search: query || undefined,
-          category: category || undefined,
-          brand: brand || undefined,
-          minPrice: minPrice ? Number(minPrice) : undefined,
-          maxPrice: maxPrice ? Number(maxPrice) : undefined,
-          inStockOnly,
-          partnerOnly,
-          sort,
-          limit: 60,
-        });
-        if (!active) return;
-        setProducts(data);
-      } catch {
-        if (active) setError(true);
-      } finally {
-        if (active) setLoading(false);
-      }
-    }, 250);
+    const id = setTimeout(() => setDebouncedQ(filters.query.trim()), 300);
+    return () => clearTimeout(id);
+  }, [filters.query]);
+
+  /* ---- fetch (server handles search + stock/partner; the rest is instant, client-side) ---- */
+  React.useEffect(() => {
+    let live = true;
+    setLoading(true);
+    setError(false);
+    getProducts({
+      search: debouncedQ || undefined,
+      inStockOnly: filters.inStockOnly,
+      partnerOnly: filters.partnerOnly,
+      sort: 'relevance',
+    })
+      .then((d) => live && setAll(d))
+      .catch(() => live && setError(true))
+      .finally(() => live && setLoading(false));
     return () => {
-      active = false;
-      clearTimeout(handle);
+      live = false;
     };
-  }, [query, category, brand, minPrice, maxPrice, inStockOnly, partnerOnly, sort]);
+  }, [debouncedQ, filters.inStockOnly, filters.partnerOnly]);
 
-  const clearFilters = () => {
-    setQuery('');
-    setCategory('all');
-    setBrand('all');
-    setMinPrice('');
-    setMaxPrice('');
-    setInStockOnly(false);
-    setPartnerOnly(false);
-    setSort('relevance');
+  /* ---- derived data ---- */
+  const bounds = React.useMemo<[number, number]>(() => {
+    const prices = all.map((p) => p.lowest_price).filter((x): x is number => x !== null);
+    if (!prices.length) return [0, 0];
+    return [Math.floor(Math.min(...prices)), Math.ceil(Math.max(...prices))];
+  }, [all]);
+
+  const passes = React.useCallback(
+    (p: ProductWithMeta, skip?: 'category') => {
+      if (skip !== 'category' && filters.categories.length && !filters.categories.includes(p.category_id ?? '')) return false;
+      if (filters.brands.length && !filters.brands.includes(p.brand ?? '')) return false;
+      if (filters.price) {
+        const x = p.lowest_price;
+        if (x === null || x < filters.price[0] || x > filters.price[1]) return false;
+      }
+      return true;
+    },
+    [filters.categories, filters.brands, filters.price]
+  );
+
+  const categoryCounts = React.useMemo(() => {
+    const m: Record<string, number> = {};
+    for (const p of all) if (p.category_id && passes(p, 'category')) m[p.category_id] = (m[p.category_id] ?? 0) + 1;
+    return m;
+  }, [all, passes]);
+
+  const brands = React.useMemo(() => {
+    const m = new Map<string, number>();
+    for (const p of all) if (p.brand) m.set(p.brand, (m.get(p.brand) ?? 0) + 1);
+    return Array.from(m, ([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count || a.name.localeCompare(b.name));
+  }, [all]);
+
+  const results = React.useMemo(() => {
+    const list = all.filter((p) => passes(p));
+    const price = (p: ProductWithMeta) => p.lowest_price ?? Infinity;
+    switch (sort) {
+      case 'lowest':
+        return list.sort((a, b) => price(a) - price(b));
+      case 'highest':
+        return list.sort((a, b) => (b.lowest_price ?? -1) - (a.lowest_price ?? -1));
+      case 'newest':
+        return list.sort((a, b) => +new Date(b.updated_at) - +new Date(a.updated_at));
+      case 'offers':
+        return list.sort((a, b) => b.offers_count - a.offers_count || price(a) - price(b));
+      default:
+        return list;
+    }
+  }, [all, passes, sort]);
+
+  const shared = React.useMemo(() => findSharedImages(all), [all]);
+
+  /* ---- infinite scroll ---- */
+  React.useEffect(() => {
+    setVisible(PAGE);
+  }, [results.length, sort, view]);
+
+  const shown = results.slice(0, visible);
+  const hasMore = visible < results.length;
+
+  React.useEffect(() => {
+    const el = sentinel.current;
+    if (!el || !hasMore || loading) return;
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (!entries[0].isIntersecting || more) return;
+        setMore(true);
+        window.setTimeout(() => {
+          setVisible((v) => v + PAGE);
+          setMore(false);
+        }, 350);
+      },
+      { rootMargin: '400px' }
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [hasMore, loading, more, visible]);
+
+  /* ---- filters helpers ---- */
+  const patch = (p: Partial<Filters>) => setFilters((f) => ({ ...f, ...p }));
+  const clearAll = () => setFilters(EMPTY_FILTERS);
+  const activeCount =
+    filters.categories.length +
+    filters.brands.length +
+    (filters.price ? 1 : 0) +
+    (filters.inStockOnly ? 1 : 0) +
+    (filters.partnerOnly ? 1 : 0);
+  const hasAny = activeCount > 0 || !!filters.query;
+  const catName = (id: string) => {
+    const c = categories.find((x) => x.id === id);
+    return c ? (lang === 'ar' ? c.name_ar : c.name_en) : id;
   };
 
+  const panel = (
+    <FilterPanel
+      filters={filters}
+      onChange={setFilters}
+      categories={categories}
+      categoryCounts={categoryCounts}
+      brands={brands}
+      bounds={bounds}
+    />
+  );
+
   return (
-    <div className="container mx-auto px-4 py-8">
-      <div className="mb-6 flex items-center justify-between">
-        <h1 className="font-cairo text-2xl font-bold">{t('nav', 'products', lang)}</h1>
-        <div className="flex items-center gap-2">
-          <SlidersHorizontal className="h-4 w-4 text-muted-foreground" />
-          <Select value={sort} onValueChange={(v) => setSort(v as typeof sort)}>
-            <SelectTrigger className="h-9 w-40">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="relevance">{t('sort', 'relevance', lang)}</SelectItem>
-              <SelectItem value="lowest">{t('sort', 'lowestPrice', lang)}</SelectItem>
-              <SelectItem value="highest">{t('sort', 'highestPrice', lang)}</SelectItem>
-              <SelectItem value="newest">{t('sort', 'newest', lang)}</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
+    <div className="container py-8 md:py-10">
+      <div className="mb-6">
+        <h1 className="font-display text-3xl font-bold">{t('nav', 'products', lang)}</h1>
+        <p className="mt-1 text-sm text-muted-foreground">
+          {L('قارن الأسعار من كل المحلات في مكان واحد', 'Compare prices across every shop in one place')}
+        </p>
       </div>
 
-      {/* Category chips */}
-      <div className="mb-6 flex flex-wrap gap-2">
-        <button
-          onClick={() => setCategory('all')}
-          className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
-            category === 'all'
-              ? 'border-accent bg-accent text-accent-foreground'
-              : 'border-border bg-card hover:border-accent hover:bg-accent/5'
-          }`}
-        >
-          {t('common', 'all', lang)}
-        </button>
-        {categories.map((c) => (
-          <button
-            key={c.id}
-            onClick={() => setCategory(c.id)}
-            className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
-              category === c.id
-                ? 'border-accent bg-accent text-accent-foreground'
-                : 'border-border bg-card hover:border-accent hover:bg-accent/5'
-            }`}
-          >
-            {lang === 'ar' ? c.name_ar : c.name_en}
-          </button>
-        ))}
-      </div>
-
-      <div className="grid gap-6 lg:grid-cols-[260px_1fr]">
-        {/* Filters */}
-        <aside className="lg:sticky lg:top-20 lg:h-fit">
-          <Card className="p-4">
+      <div className="grid gap-6 lg:grid-cols-[300px_minmax(0,1fr)] lg:gap-8">
+        {/* ------------------------------------------------ sidebar (desktop) */}
+        <aside className="hidden lg:block">
+          <div className="glass sticky top-24 max-h-[calc(100dvh-7rem)] overflow-y-auto rounded-lg p-5">
             <div className="mb-4 flex items-center justify-between">
-              <h2 className="text-sm font-semibold">{t('filters', 'title', lang)}</h2>
-              <Button variant="ghost" size="sm" onClick={clearFilters} className="h-7 text-xs">
-                {t('common', 'clear', lang)}
-              </Button>
+              <h2 className="flex items-center gap-2 font-display text-base font-semibold">
+                <SlidersHorizontal className="h-4 w-4 text-accent" />
+                {t('filters', 'title', lang)}
+                {activeCount > 0 && (
+                  <span className="rounded-full bg-accent px-1.5 py-0.5 font-mono text-[10px] text-accent-foreground">
+                    {activeCount}
+                  </span>
+                )}
+              </h2>
+              {hasAny && (
+                <Button variant="ghost" size="sm" onClick={clearAll} className="h-7 px-2 text-xs">
+                  {t('common', 'clear', lang)}
+                </Button>
+              )}
             </div>
-
-            <div className="space-y-5">
-              <div className="space-y-2">
-                <Label className="text-xs">{t('nav', 'search', lang)}</Label>
-                <Input
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  placeholder={t('nav', 'search', lang)}
-                  className="h-9"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label className="text-xs">{t('filters', 'category', lang)}</Label>
-                <Select value={category} onValueChange={setCategory}>
-                  <SelectTrigger className="h-9">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">{t('common', 'all', lang)}</SelectItem>
-                    {categories.map((c) => (
-                      <SelectItem key={c.id} value={c.id}>
-                        {lang === 'ar' ? c.name_ar : c.name_en}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label className="text-xs">{t('filters', 'brand', lang)}</Label>
-                <Select value={brand} onValueChange={setBrand}>
-                  <SelectTrigger className="h-9">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">{t('common', 'all', lang)}</SelectItem>
-                    {brands.map((b) => (
-                      <SelectItem key={b} value={b}>
-                        {b}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label className="text-xs">{t('filters', 'priceRange', lang)}</Label>
-                <div className="flex items-center gap-2">
-                  <Input
-                    type="number"
-                    min={0}
-                    value={minPrice}
-                    onChange={(e) => setMinPrice(e.target.value)}
-                    placeholder={t('filters', 'minPrice', lang)}
-                    className="h-9"
-                  />
-                  <span className="text-muted-foreground">—</span>
-                  <Input
-                    type="number"
-                    min={0}
-                    value={maxPrice}
-                    onChange={(e) => setMaxPrice(e.target.value)}
-                    placeholder={t('filters', 'maxPrice', lang)}
-                    className="h-9"
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-3">
-                <Label className="text-xs">{t('filters', 'availability', lang)}</Label>
-                <label className="flex cursor-pointer items-center gap-2 text-sm">
-                  <Checkbox
-                    checked={inStockOnly}
-                    onCheckedChange={(v) => setInStockOnly(v === true)}
-                  />
-                  {t('filters', 'inStockOnly', lang)}
-                </label>
-                <label className="flex cursor-pointer items-center gap-2 text-sm">
-                  <Checkbox
-                    checked={partnerOnly}
-                    onCheckedChange={(v) => setPartnerOnly(v === true)}
-                  />
-                  {t('filters', 'partnerOnly', lang)}
-                </label>
-              </div>
-            </div>
-          </Card>
+            {panel}
+          </div>
         </aside>
 
-        {/* Results */}
-        <div>
+        {/* ----------------------------------------------------------- main */}
+        <div className="min-w-0 space-y-4">
+          {/* search + toolbar */}
+          <div className="glass flex flex-col gap-3 rounded-lg p-3 sm:flex-row sm:items-center">
+            <div className="relative flex-1">
+              <Search className="pointer-events-none absolute start-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <input
+                value={filters.query}
+                onChange={(e) => patch({ query: e.target.value })}
+                placeholder={t('nav', 'search', lang)}
+                className="field h-11 ps-10 pe-9"
+              />
+              {filters.query && (
+                <button
+                  type="button"
+                  aria-label="Clear search"
+                  onClick={() => patch({ query: '' })}
+                  className="absolute end-2.5 top-1/2 -translate-y-1/2 rounded-full p-1 text-muted-foreground hover:bg-accent/10"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              )}
+            </div>
+
+            <div className="flex items-center gap-2">
+              <Button variant="outline" className="relative lg:hidden" onClick={() => setSheet(true)}>
+                <SlidersHorizontal className="h-4 w-4" />
+                {t('filters', 'title', lang)}
+                {activeCount > 0 && (
+                  <span className="rounded-full bg-accent px-1.5 font-mono text-[10px] text-accent-foreground">{activeCount}</span>
+                )}
+              </Button>
+
+              <Select value={sort} onValueChange={(v) => setSort(v as Sort)}>
+                <SelectTrigger className="w-[170px] sm:w-[190px]" aria-label="Sort">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="relevance">{t('sort', 'relevance', lang)}</SelectItem>
+                  <SelectItem value="lowest">{t('sort', 'lowestPrice', lang)}</SelectItem>
+                  <SelectItem value="highest">{t('sort', 'highestPrice', lang)}</SelectItem>
+                  <SelectItem value="newest">{t('sort', 'newest', lang)}</SelectItem>
+                  <SelectItem value="offers">{L('الأكثر عروضًا', 'Most offers')}</SelectItem>
+                </SelectContent>
+              </Select>
+
+              <div className="hidden items-center rounded-sm border border-input p-0.5 sm:flex" role="group" aria-label="View">
+                {(['grid', 'list'] as const).map((v) => (
+                  <button
+                    key={v}
+                    type="button"
+                    aria-pressed={view === v}
+                    aria-label={v === 'grid' ? 'Grid view' : 'List view'}
+                    onClick={() => setView(v)}
+                    className={cn(
+                      'flex h-9 w-9 items-center justify-center rounded-xs transition-colors duration-fast',
+                      view === v ? 'bg-accent text-accent-foreground shadow-glow' : 'text-muted-foreground hover:text-foreground'
+                    )}
+                  >
+                    {v === 'grid' ? <LayoutGrid className="h-4 w-4" /> : <List className="h-4 w-4" />}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* count + active chips */}
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="me-1 text-sm text-muted-foreground" aria-live="polite">
+              {loading ? (
+                <Skeleton className="h-4 w-24" />
+              ) : (
+                <>
+                  <span className="font-mono font-semibold text-foreground">{results.length}</span> {L('منتج', 'products')}
+                </>
+              )}
+            </p>
+            {filters.categories.map((id) => (
+              <Chip key={id} selected onRemove={() => patch({ categories: filters.categories.filter((x) => x !== id) })} className="h-8 text-xs">
+                {catName(id)}
+              </Chip>
+            ))}
+            {filters.brands.map((b) => (
+              <Chip key={b} selected onRemove={() => patch({ brands: filters.brands.filter((x) => x !== b) })} className="h-8 text-xs">
+                {b}
+              </Chip>
+            ))}
+            {filters.price && (
+              <Chip selected onRemove={() => patch({ price: null })} className="h-8 text-xs">
+                <span className="price">
+                  {formatEGP(filters.price[0], lang)} – {formatEGP(filters.price[1], lang)}
+                </span>
+              </Chip>
+            )}
+            {filters.inStockOnly && (
+              <Chip selected onRemove={() => patch({ inStockOnly: false })} className="h-8 text-xs">
+                {L('المتوفر فقط', 'In stock')}
+              </Chip>
+            )}
+            {filters.partnerOnly && (
+              <Chip selected onRemove={() => patch({ partnerOnly: false })} className="h-8 text-xs">
+                {L('محلات شريكة', 'Partner shops')}
+              </Chip>
+            )}
+            {hasAny && (
+              <button type="button" onClick={clearAll} className="text-xs font-medium text-accent hover:underline">
+                {L('مسح الكل', 'Clear all')}
+              </button>
+            )}
+          </div>
+
+          {/* results */}
           {error ? (
             <div className="rounded-lg border border-destructive/40 bg-destructive/5 p-8 text-center">
               <p className="text-sm text-destructive">{t('common', 'error', lang)}</p>
@@ -258,35 +338,79 @@ function ProductsContent() {
               </Button>
             </div>
           ) : loading ? (
-            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+            <div className={cn('grid gap-4', view === 'grid' ? 'grid-cols-2 md:grid-cols-3' : 'grid-cols-1')}>
               {Array.from({ length: 9 }).map((_, i) => (
-                <Skeleton key={i} className="h-64" />
+                <ProductCardSkeleton key={i} view={view} />
               ))}
             </div>
-          ) : products.length === 0 ? (
-            <div className="flex flex-col items-center justify-center rounded-lg border border-dashed py-16 text-center">
-              <SearchX className="mb-3 h-10 w-10 text-muted-foreground/50" />
-              <p className="text-sm font-medium">{t('common', 'noResults', lang)}</p>
-              <Button variant="ghost" size="sm" onClick={clearFilters} className="mt-3">
-                {t('common', 'clear', lang)}
-              </Button>
-            </div>
+          ) : results.length === 0 ? (
+            <EmptyState onClear={clearAll} hasFilters={hasAny} />
           ) : (
-            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
-              {products.map((p) => (
-                <ProductCard key={p.id} product={p} />
-              ))}
-            </div>
+            <>
+              <div className={cn('grid gap-4', view === 'grid' ? 'grid-cols-2 md:grid-cols-3' : 'grid-cols-1')}>
+                <AnimatePresence initial={false}>
+                  {shown.map((p) => (
+                    <ProductCard
+                      key={p.id}
+                      product={p}
+                      view={view === 'list' ? 'list' : 'grid'}
+                      imageIsShared={!!p.image_url && shared.has(p.image_url)}
+                    />
+                  ))}
+                </AnimatePresence>
+                {more &&
+                  Array.from({ length: 3 }).map((_, i) => <ProductCardSkeleton key={`s${i}`} view={view} />)}
+              </div>
+
+              {hasMore ? (
+                <div ref={sentinel} className="flex justify-center pt-4">
+                  <Button variant="outline" onClick={() => setVisible((v) => v + PAGE)}>
+                    {L('عرض المزيد', 'Show more')} ({results.length - visible})
+                  </Button>
+                </div>
+              ) : (
+                results.length > PAGE && (
+                  <p className="pt-4 text-center text-xs text-muted-foreground">
+                    {L('وصلت لآخر النتائج', "You've reached the end")}
+                  </p>
+                )
+              )}
+            </>
           )}
         </div>
       </div>
+
+      {/* ---------------------------------------------- mobile bottom sheet */}
+      <BottomSheet
+        open={sheet}
+        onClose={() => setSheet(false)}
+        title={t('filters', 'title', lang)}
+        footer={
+          <div className="flex gap-3">
+            <Button variant="outline" className="flex-1" onClick={clearAll} disabled={!hasAny}>
+              {t('common', 'clear', lang)}
+            </Button>
+            <Button className="flex-[2]" onClick={() => setSheet(false)}>
+              {L('عرض', 'Show')} {results.length} {L('منتج', 'products')}
+            </Button>
+          </div>
+        }
+      >
+        {panel}
+      </BottomSheet>
     </div>
   );
 }
 
 export default function ProductsPage() {
   return (
-    <React.Suspense fallback={<div className="container mx-auto px-4 py-8"><Skeleton className="h-64" /></div>}>
+    <React.Suspense
+      fallback={
+        <div className="container py-10">
+          <Skeleton className="h-64" />
+        </div>
+      }
+    >
       <ProductsContent />
     </React.Suspense>
   );

@@ -1,75 +1,103 @@
 'use client';
 
 import * as React from 'react';
-import { ShoppingBag, Clock, Truck, AlertCircle, XCircle, Package, BarChart3 } from 'lucide-react';
-import { useLanguage } from '@/components/providers/language-provider';
+import {
+  ShoppingBag,
+  Clock,
+  Truck,
+  AlertCircle,
+  ClipboardCheck,
+  Package,
+  Wallet,
+  BadgeCheck,
+} from 'lucide-react';
 import { Card } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
-import { supabase } from '@/lib/supabase';
-import { formatEGP } from '@/lib/format';
-import { t } from '@/lib/i18n';
+import { createBrowserSupabaseClient } from '@/utils/supabase/client';
+import { egp, errMsg } from '@/lib/dashboard';
 
 type Stats = {
-  newOrders: number;
+  newShipments: number;
   preparing: number;
   outForDelivery: number;
-  awaitingApproval: number;
-  failedWebhooks: number;
-  partiallyDelivered: number;
-  totalOrders: number;
-  totalSales: number;
+  awaitingCustomer: number;
+  pendingApprovals: number;
+  deliveredSales: number;
+  commissionDue: number;
+  commissionCollected: number;
 };
 
 export function AdminOverview() {
-  const { lang } = useLanguage();
+  const supabase = React.useMemo(() => createBrowserSupabaseClient(), []);
   const [stats, setStats] = React.useState<Stats | null>(null);
-  const [loading, setLoading] = React.useState(true);
+  const [error, setError] = React.useState<string | null>(null);
 
   React.useEffect(() => {
+    let alive = true;
     (async () => {
       try {
-        const [
-          { count: newOrders },
-          { count: preparing },
-          { count: outForDelivery },
-          { count: awaitingApproval },
-          { count: failedWebhooks },
-          { data: orders },
-        ] = await Promise.all([
-          supabase.from('orders').select('*', { count: 'exact', head: true }).eq('status', 'new'),
-          supabase.from('shop_orders').select('*', { count: 'exact', head: true }).eq('status', 'preparing'),
-          supabase.from('shop_orders').select('*', { count: 'exact', head: true }).eq('status', 'out_for_delivery'),
-          supabase.from('shop_orders').select('*', { count: 'exact', head: true }).eq('status', 'awaiting_approval'),
-          supabase.from('shop_orders').select('*', { count: 'exact', head: true }).eq('webhook_status', 'failed'),
-          supabase.from('orders').select('grand_total, status'),
+        const count = (status: string) =>
+          supabase.from('shipments').select('id', { count: 'exact', head: true }).eq('status', status);
+
+        const [nw, prep, out, awaiting, prods, offers, delivered] = await Promise.all([
+          count('new'),
+          count('preparing'),
+          count('out_for_delivery'),
+          count('awaiting_approval'),
+          supabase.from('products').select('id', { count: 'exact', head: true }).eq('status', 'pending'),
+          supabase
+            .from('offers')
+            .select('id', { count: 'exact', head: true })
+            .or('status.eq.pending,pending_price.not.is.null'),
+          supabase
+            .from('shipments')
+            .select('subtotal, commission_amount, commission_paid_at')
+            .eq('status', 'delivered')
+            .limit(5000),
         ]);
 
-        const totalOrders = orders?.length || 0;
-        const totalSales = (orders || []).reduce((s, o) => s + Number(o.grand_total), 0);
-        const delivered = (orders || []).filter((o) => o.status === 'delivered').length;
-        const partiallyDelivered = delivered > 0 && delivered < totalOrders ? 1 : 0;
+        const firstError = [nw, prep, out, awaiting, prods, offers, delivered].find((r) => r.error)?.error;
+        if (firstError) throw firstError;
 
+        let sales = 0;
+        let due = 0;
+        let collected = 0;
+        for (const s of delivered.data ?? []) {
+          sales += Number(s.subtotal ?? 0);
+          const c = Number(s.commission_amount ?? 0);
+          if (s.commission_paid_at) collected += c;
+          else due += c;
+        }
+
+        if (!alive) return;
         setStats({
-          newOrders: newOrders || 0,
-          preparing: preparing || 0,
-          outForDelivery: outForDelivery || 0,
-          awaitingApproval: awaitingApproval || 0,
-          failedWebhooks: failedWebhooks || 0,
-          partiallyDelivered,
-          totalOrders,
-          totalSales,
+          newShipments: nw.count ?? 0,
+          preparing: prep.count ?? 0,
+          outForDelivery: out.count ?? 0,
+          awaitingCustomer: awaiting.count ?? 0,
+          pendingApprovals: (prods.count ?? 0) + (offers.count ?? 0),
+          deliveredSales: sales,
+          commissionDue: due,
+          commissionCollected: collected,
         });
-      } catch {
-        setStats(null);
-      } finally {
-        setLoading(false);
+      } catch (e) {
+        if (alive) setError(errMsg(e));
       }
     })();
-  }, []);
+    return () => {
+      alive = false;
+    };
+  }, [supabase]);
 
-  if (loading) {
+  if (error) {
     return (
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <Card className="p-6 text-sm text-destructive">تعذر تحميل الإحصائيات: {error}</Card>
+    );
+  }
+
+  if (!stats) {
+    return (
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
         {Array.from({ length: 8 }).map((_, i) => (
           <Skeleton key={i} className="h-24" />
         ))}
@@ -77,30 +105,26 @@ export function AdminOverview() {
     );
   }
 
-  if (!stats) {
-    return <Card className="p-6 text-center text-muted-foreground">{t('admin', 'noData', lang)}</Card>;
-  }
-
   const cards = [
-    { label: t('admin', 'newOrders', lang), value: String(stats.newOrders), icon: ShoppingBag, color: 'text-blue-600' },
-    { label: t('admin', 'preparing', lang), value: String(stats.preparing), icon: Clock, color: 'text-amber-600' },
-    { label: t('admin', 'outForDelivery', lang), value: String(stats.outForDelivery), icon: Truck, color: 'text-purple-600' },
-    { label: t('admin', 'awaitingApproval', lang), value: String(stats.awaitingApproval), icon: AlertCircle, color: 'text-orange-600' },
-    { label: t('admin', 'failedWebhooks', lang), value: String(stats.failedWebhooks), icon: XCircle, color: 'text-red-600' },
-    { label: t('admin', 'partiallyDelivered', lang), value: String(stats.partiallyDelivered), icon: Package, color: 'text-cyan-600' },
-    { label: t('admin', 'totalOrders', lang), value: String(stats.totalOrders), icon: ShoppingBag, color: 'text-primary' },
-    { label: t('admin', 'totalSales', lang), value: formatEGP(stats.totalSales, lang), icon: BarChart3, color: 'text-accent' },
+    { label: 'شحنات جديدة', value: String(stats.newShipments), icon: ShoppingBag },
+    { label: 'جاري التجهيز', value: String(stats.preparing), icon: Clock },
+    { label: 'خرجت للتوصيل', value: String(stats.outForDelivery), icon: Truck },
+    { label: 'بانتظار موافقة العميل', value: String(stats.awaitingCustomer), icon: AlertCircle },
+    { label: 'بانتظار موافقتك (منتجات وأسعار)', value: String(stats.pendingApprovals), icon: ClipboardCheck },
+    { label: 'مبيعات تم تسليمها', value: egp(stats.deliveredSales), icon: Package },
+    { label: 'عمولات مستحقة لك', value: egp(stats.commissionDue), icon: Wallet },
+    { label: 'عمولات تم تحصيلها', value: egp(stats.commissionCollected), icon: BadgeCheck },
   ];
 
   return (
-    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-      {cards.map((c, i) => (
-        <Card key={i} className="flex items-center justify-between p-4">
-          <div>
-            <div className="text-sm text-muted-foreground">{c.label}</div>
-            <div className="mt-1 text-2xl font-bold">{c.value}</div>
+    <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+      {cards.map((c) => (
+        <Card key={c.label} className="p-4">
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <c.icon className="h-4 w-4" />
+            {c.label}
           </div>
-          <c.icon className={`h-8 w-8 ${c.color}`} />
+          <div className="mt-2 text-xl font-bold">{c.value}</div>
         </Card>
       ))}
     </div>

@@ -2,7 +2,6 @@
 
 import * as React from 'react';
 import { Download, BarChart3 } from 'lucide-react';
-import { useLanguage } from '@/components/providers/language-provider';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -16,247 +15,181 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
-import { supabase } from '@/lib/supabase';
-import { formatEGP, formatDate } from '@/lib/format';
-import { t } from '@/lib/i18n';
-
-type ShopOption = { id: string; name: string };
-
-type ReportRow = {
-  shop_order_id: string;
-  order_code: string;
-  shop_name: string;
-  subtotal: number;
-  delivery_fee: number;
-  commission_rate: number;
-  commission_amount: number;
-  status: string;
-  created_at: string;
-};
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { useToast } from '@/hooks/use-toast';
+import { createBrowserSupabaseClient } from '@/utils/supabase/client';
+import { dateAr, downloadCsv, egp, type Row } from '@/lib/dashboard';
 
 export function AdminReports() {
-  const { lang } = useLanguage();
-  const [shops, setShops] = React.useState<ShopOption[]>([]);
+  const supabase = React.useMemo(() => createBrowserSupabaseClient(), []);
+  const { toast } = useToast();
+
+  const [shops, setShops] = React.useState<Row[]>([]);
   const [shopId, setShopId] = React.useState('all');
   const [fromDate, setFromDate] = React.useState('');
   const [toDate, setToDate] = React.useState('');
-  const [rows, setRows] = React.useState<ReportRow[]>([]);
+  const [rows, setRows] = React.useState<Row[]>([]);
   const [loading, setLoading] = React.useState(false);
   const [generated, setGenerated] = React.useState(false);
 
   React.useEffect(() => {
-    (async () => {
-      const { data } = await supabase
-        .from('shops')
-        .select('id, name')
-        .order('name');
-      setShops((data || []) as unknown as ShopOption[]);
-    })();
-  }, []);
+    supabase
+      .from('shops')
+      .select('id, name')
+      .order('name')
+      .then(({ data }) => setShops(data ?? []));
+  }, [supabase]);
 
   const generate = async () => {
     setLoading(true);
-    setGenerated(true);
-
-    let query = supabase
-      .from('shop_orders')
-      .select(`
-        id,
-        subtotal,
-        delivery_fee,
-        commission_rate_snapshot,
-        commission_amount,
-        status,
-        created_at,
-        shop:shops(name),
-        order:orders(code)
-      `)
-      .order('created_at', { ascending: false })
-      .limit(200);
-
-    if (shopId !== 'all') {
-      query = query.eq('shop_id', shopId);
-    }
-    if (fromDate) {
-      query = query.gte('created_at', new Date(fromDate).toISOString());
-    }
-    if (toDate) {
-      const end = new Date(toDate);
-      end.setHours(23, 59, 59);
-      query = query.lte('created_at', end.toISOString());
-    }
-
-    const { data } = await query;
-    const mapped: ReportRow[] = (data || []).map((r: Record<string, unknown>) => ({
-      shop_order_id: r.id as string,
-      order_code: (r.order as { code: string }).code,
-      shop_name: (r.shop as { name: string }).name,
-      subtotal: Number(r.subtotal),
-      delivery_fee: Number(r.delivery_fee),
-      commission_rate: Number(r.commission_rate_snapshot),
-      commission_amount: Number(r.commission_amount),
-      status: r.status as string,
-      created_at: r.created_at as string,
-    }));
-    setRows(mapped);
+    let q = supabase
+      .from('shipments')
+      .select(
+        'id, shop_id, shop_name, subtotal, delivery_fee, delivered_at, commission_rate, commission_amount, commission_paid_at, order:orders(code)'
+      )
+      .eq('status', 'delivered')
+      .order('delivered_at', { ascending: false })
+      .limit(5000);
+    if (shopId !== 'all') q = q.eq('shop_id', shopId);
+    if (fromDate) q = q.gte('delivered_at', `${fromDate}T00:00:00`);
+    if (toDate) q = q.lte('delivered_at', `${toDate}T23:59:59`);
+    const { data, error } = await q;
     setLoading(false);
+    if (error) {
+      toast({ title: 'تعذر إنشاء التقرير', description: error.message, variant: 'destructive' });
+      return;
+    }
+    setRows(data ?? []);
+    setGenerated(true);
   };
+
+  const totals = rows.reduce(
+    (acc, r) => {
+      acc.sales += Number(r.subtotal ?? 0);
+      const c = Number(r.commission_amount ?? 0);
+      acc.commission += c;
+      if (!r.commission_paid_at) acc.due += c;
+      return acc;
+    },
+    { sales: 0, commission: 0, due: 0 }
+  );
 
   const exportCsv = () => {
-    const headers = [
-      t('admin', 'orderCode', lang),
-      t('admin', 'shopNameLabel', lang),
-      t('admin', 'subtotal', lang),
-      t('admin', 'deliveryFeeLabel', lang),
-      t('admin', 'commissionRateSnapshot', lang),
-      t('admin', 'commissionAmount', lang),
-      t('admin', 'shipmentStatus', lang),
-      t('admin', 'date', lang),
-    ];
-    const lines = [headers.join(',')];
-    for (const r of rows) {
-      lines.push([
-        r.order_code,
-        `"${r.shop_name}"`,
-        r.subtotal.toFixed(2),
-        r.delivery_fee.toFixed(2),
-        `${(r.commission_rate * 100).toFixed(1)}%`,
-        r.commission_amount.toFixed(2),
-        t('shipment', r.status, lang),
-        formatDate(r.created_at, lang),
-      ].join(','));
-    }
-    const csv = '\uFEFF' + lines.join('\n');
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `commission-report-${new Date().toISOString().slice(0, 10)}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
+    downloadCsv('report.csv', [
+      ['كود الطلب', 'المحل', 'تاريخ التسليم', 'سعر المنتجات', 'التوصيل', 'نسبة العمولة %', 'العمولة', 'مدفوعة؟'],
+      ...rows.map((r) => [
+        r.order?.code ?? '',
+        r.shop_name,
+        r.delivered_at ? new Date(r.delivered_at).toISOString().slice(0, 10) : '',
+        Number(r.subtotal),
+        Number(r.delivery_fee),
+        Number(r.commission_rate ?? 0),
+        Number(r.commission_amount ?? 0),
+        r.commission_paid_at ? 'نعم' : 'لا',
+      ]),
+    ]);
   };
-
-  const totalSales = rows.reduce((s, r) => s + r.subtotal, 0);
-  const totalCommission = rows.reduce((s, r) => s + r.commission_amount, 0);
-  const totalDelivery = rows.reduce((s, r) => s + r.delivery_fee, 0);
-  const cancelledCount = rows.filter((r) => r.status === 'cancelled').length;
 
   return (
     <div className="space-y-4">
-      {/* Filters */}
-      <Card className="p-4">
-        <div className="flex flex-wrap items-end gap-3">
-          <div className="space-y-1">
-            <Label className="text-xs">{t('admin', 'selectShop', lang)}</Label>
-            <Select value={shopId} onValueChange={setShopId}>
-              <SelectTrigger className="w-48">
-                <SelectValue placeholder={t('admin', 'allShops', lang)} />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">{t('admin', 'allShops', lang)}</SelectItem>
-                {shops.map((s) => (
-                  <SelectItem key={s.id} value={s.id}>
-                    {s.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-1">
-            <Label className="text-xs">{t('admin', 'fromDate', lang)}</Label>
-            <Input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} className="w-40" />
-          </div>
-          <div className="space-y-1">
-            <Label className="text-xs">{t('admin', 'toDate', lang)}</Label>
-            <Input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} className="w-40" />
-          </div>
-          <Button onClick={generate} disabled={loading}>
-            <BarChart3 className="h-4 w-4" />
-            {t('admin', 'generate', lang)}
-          </Button>
-          {rows.length > 0 && (
-            <Button variant="outline" onClick={exportCsv}>
-              <Download className="h-4 w-4" />
-              {t('admin', 'exportCsv', lang)}
-            </Button>
-          )}
+      <Card className="flex flex-wrap items-end gap-3 p-4">
+        <div className="space-y-1">
+          <Label>المحل</Label>
+          <Select value={shopId} onValueChange={setShopId}>
+            <SelectTrigger className="w-48">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">كل المحلات</SelectItem>
+              {shops.map((s) => (
+                <SelectItem key={s.id} value={s.id}>
+                  {s.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
+        <div className="space-y-1">
+          <Label>من تاريخ</Label>
+          <Input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} dir="ltr" />
+        </div>
+        <div className="space-y-1">
+          <Label>إلى تاريخ</Label>
+          <Input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} dir="ltr" />
+        </div>
+        <Button onClick={generate} disabled={loading}>
+          <BarChart3 className="h-4 w-4" />
+          إنشاء التقرير
+        </Button>
+        {generated && rows.length > 0 && (
+          <Button variant="outline" onClick={exportCsv}>
+            <Download className="h-4 w-4" />
+            تصدير CSV
+          </Button>
+        )}
       </Card>
 
-      {/* Summary */}
-      {generated && !loading && rows.length > 0 && (
-        <div className="grid gap-3 sm:grid-cols-3">
-          <Card className="p-4">
-            <div className="text-sm text-muted-foreground">{t('admin', 'totalSales', lang)}</div>
-            <div className="mt-1 text-xl font-bold">{formatEGP(totalSales, lang)}</div>
-          </Card>
-          <Card className="p-4">
-            <div className="text-sm text-muted-foreground">{t('admin', 'totalCommission', lang)}</div>
-            <div className="mt-1 text-xl font-bold text-accent">{formatEGP(totalCommission, lang)}</div>
-          </Card>
-          <Card className="p-4">
-            <div className="text-sm text-muted-foreground">
-              {t('admin', 'deliveryFeeLabel', lang)} · {t('shipment', 'cancelled', lang)}: {cancelledCount}
-            </div>
-            <div className="mt-1 text-xl font-bold">{formatEGP(totalDelivery, lang)}</div>
-          </Card>
-        </div>
-      )}
+      {loading && <Skeleton className="h-40" />}
 
-      {/* Table */}
-      {loading ? (
-        <Skeleton className="h-64" />
-      ) : generated && rows.length === 0 ? (
-        <Card className="p-8 text-center text-muted-foreground">{t('admin', 'noData', lang)}</Card>
-      ) : generated && rows.length > 0 ? (
-        <Card className="overflow-hidden">
-          <div className="overflow-x-auto">
+      {generated && !loading && (
+        <>
+          <div className="grid grid-cols-3 gap-3">
+            <Card className="p-4">
+              <div className="text-xs text-muted-foreground">إجمالي المبيعات</div>
+              <div className="mt-1 text-lg font-bold">{egp(totals.sales)}</div>
+            </Card>
+            <Card className="p-4">
+              <div className="text-xs text-muted-foreground">إجمالي العمولة</div>
+              <div className="mt-1 text-lg font-bold">{egp(totals.commission)}</div>
+            </Card>
+            <Card className="p-4">
+              <div className="text-xs text-muted-foreground">عمولة لسه ما اتدفعتش</div>
+              <div className="mt-1 text-lg font-bold">{egp(totals.due)}</div>
+            </Card>
+          </div>
+
+          <Card className="overflow-x-auto">
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>{t('admin', 'orderCode', lang)}</TableHead>
-                  <TableHead>{t('admin', 'shopNameLabel', lang)}</TableHead>
-                  <TableHead className="text-end">{t('admin', 'subtotal', lang)}</TableHead>
-                  <TableHead className="text-end">{t('admin', 'deliveryFeeLabel', lang)}</TableHead>
-                  <TableHead className="text-end">{t('admin', 'commissionRateSnapshot', lang)}</TableHead>
-                  <TableHead className="text-end">{t('admin', 'commissionAmount', lang)}</TableHead>
-                  <TableHead>{t('admin', 'shipmentStatus', lang)}</TableHead>
-                  <TableHead>{t('admin', 'date', lang)}</TableHead>
+                  <TableHead>الطلب</TableHead>
+                  <TableHead>المحل</TableHead>
+                  <TableHead>التسليم</TableHead>
+                  <TableHead>المنتجات</TableHead>
+                  <TableHead>النسبة</TableHead>
+                  <TableHead>العمولة</TableHead>
+                  <TableHead>الدفع</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {rows.map((r) => (
-                  <TableRow key={r.shop_order_id}>
-                    <TableCell className="font-mono text-xs">{r.order_code}</TableCell>
-                    <TableCell className="text-sm">{r.shop_name}</TableCell>
-                    <TableCell className="text-end text-sm">{formatEGP(r.subtotal, lang)}</TableCell>
-                    <TableCell className="text-end text-sm">{formatEGP(r.delivery_fee, lang)}</TableCell>
-                    <TableCell className="text-end text-sm">{(r.commission_rate * 100).toFixed(1)}%</TableCell>
-                    <TableCell className="text-end text-sm font-medium text-accent">{formatEGP(r.commission_amount, lang)}</TableCell>
-                    <TableCell>
-                      <Badge
-                        variant="outline"
-                        className={`text-[10px] ${r.status === 'cancelled' ? 'border-destructive/40 text-destructive' : ''}`}
-                      >
-                        {t('shipment', r.status, lang)}
-                      </Badge>
+                {rows.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={7} className="text-center text-muted-foreground">
+                      مفيش شحنات مسلّمة في الفترة دي.
                     </TableCell>
-                    <TableCell className="text-xs text-muted-foreground">{formatDate(r.created_at, lang)}</TableCell>
                   </TableRow>
-                ))}
+                ) : (
+                  rows.map((r) => (
+                    <TableRow key={r.id}>
+                      <TableCell className="font-mono">{r.order?.code}</TableCell>
+                      <TableCell>{r.shop_name}</TableCell>
+                      <TableCell>{dateAr(r.delivered_at)}</TableCell>
+                      <TableCell>{egp(r.subtotal)}</TableCell>
+                      <TableCell>{Number(r.commission_rate ?? 0)}%</TableCell>
+                      <TableCell>{egp(r.commission_amount)}</TableCell>
+                      <TableCell>
+                        <Badge variant={r.commission_paid_at ? 'default' : 'outline'}>
+                          {r.commission_paid_at ? 'مدفوعة' : 'مستحقة'}
+                        </Badge>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
               </TableBody>
             </Table>
-          </div>
-        </Card>
-      ) : null}
+          </Card>
+        </>
+      )}
     </div>
   );
 }

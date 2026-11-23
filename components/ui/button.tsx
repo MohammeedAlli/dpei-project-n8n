@@ -5,31 +5,41 @@ import { cva, type VariantProps } from 'class-variance-authority';
 import { cn } from '@/lib/utils';
 
 const buttonVariants = cva(
-  'inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50',
+  [
+    'relative inline-flex select-none items-center justify-center gap-2 whitespace-nowrap',
+    'rounded-sm text-sm font-semibold',
+    'transition-[transform,box-shadow,background-color,border-color,color] duration-base ease-out',
+    'motion-safe:active:scale-[0.97] active:duration-fast',
+    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ring-offset-background',
+    'disabled:pointer-events-none disabled:opacity-50',
+    '[&_svg]:shrink-0 [&_svg]:pointer-events-none',
+  ].join(' '),
   {
     variants: {
       variant: {
-        default: 'bg-primary text-primary-foreground hover:bg-primary/90',
+        // Brand teal, glows on hover
+        default:
+          'bg-primary text-primary-foreground shadow-1 hover:shadow-glow-md hover:brightness-105',
+        // Amber "best price" call-to-action
+        deal: 'bg-deal text-deal-foreground shadow-1 hover:shadow-glow-deal hover:brightness-105',
         destructive:
-          'bg-destructive text-destructive-foreground hover:bg-destructive/90',
-        outline:
-          'border border-input bg-background hover:bg-accent hover:text-accent-foreground',
+          'bg-destructive text-destructive-foreground shadow-1 hover:brightness-110 hover:shadow-2',
+        // Glass-edged secondary
         secondary:
-          'bg-secondary text-secondary-foreground hover:bg-secondary/80',
-        ghost: 'hover:bg-accent hover:text-accent-foreground',
-        link: 'text-primary underline-offset-4 hover:underline',
+          'border border-border bg-secondary text-secondary-foreground shadow-1 hover:border-accent/50 hover:bg-accent/10 hover:text-foreground',
+        outline:
+          'border border-input bg-transparent text-foreground hover:border-accent/60 hover:bg-accent/10 hover:shadow-glow',
+        ghost: 'text-foreground/80 hover:bg-accent/10 hover:text-foreground',
+        link: 'h-auto rounded-xs px-0 text-accent underline-offset-4 hover:underline',
       },
       size: {
-        default: 'h-10 px-4 py-2',
-        sm: 'h-9 rounded-md px-3',
-        lg: 'h-11 rounded-md px-8',
-        icon: 'h-10 w-10',
+        default: 'h-11 px-5',
+        sm: 'h-9 px-3.5 text-[13px]',
+        lg: 'h-12 px-7 text-base',
+        icon: 'h-11 w-11',
       },
     },
-    defaultVariants: {
-      variant: 'default',
-      size: 'default',
-    },
+    defaultVariants: { variant: 'default', size: 'default' },
   }
 );
 
@@ -42,13 +52,7 @@ export interface ButtonProps
 const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
   ({ className, variant, size, asChild = false, ...props }, ref) => {
     const Comp = asChild ? Slot : 'button';
-    return (
-      <Comp
-        className={cn(buttonVariants({ variant, size, className }))}
-        ref={ref}
-        {...props}
-      />
-    );
+    return <Comp className={cn(buttonVariants({ variant, size, className }))} ref={ref} {...props} />;
   }
 );
 Button.displayName = 'Button';

@@ -1,97 +1,473 @@
+/* ==========================================================================
+   Electronics Souk — "Modern Maker Tech" design tokens + base styles
+   - HSL space-separated tokens (wired in tailwind.config.ts as hsl(var(--x)))
+   - Light + dark (.dark class, next-themes)
+   - RTL-safe: logical properties only (inset-inline, padding-inline, ...)
+   ========================================================================== */
+
 @tailwind base;
+
 @layer base {
   :root {
-    --background: 0 0% 100%;
+    /* ---------- Color: surfaces ---------- */
+    --background: 210 40% 98%;
     --foreground: 222 47% 11%;
     --card: 0 0% 100%;
     --card-foreground: 222 47% 11%;
     --popover: 0 0% 100%;
     --popover-foreground: 222 47% 11%;
-    --primary: 222 47% 11%;
-    --primary-foreground: 210 40% 98%;
     --secondary: 210 40% 96%;
     --secondary-foreground: 222 47% 11%;
     --muted: 210 40% 96%;
-    --muted-foreground: 215 16% 47%;
-    --accent: 173 80% 40%;
+    --muted-foreground: 215 16% 42%;
+    --border: 214 32% 88%;
+    --input: 214 32% 86%;
+
+    /* ---------- Color: brand ---------- */
+    --ink: 220 52% 8%;                    /* #0B1220 deep navy/ink */
+    --primary: 173 82% 45%;               /* teal brand */
+    --primary-foreground: 220 52% 8%;
+    --accent: 173 82% 29%;                /* teal — 4.6:1 on white (WCAG AA for text) */
     --accent-foreground: 0 0% 100%;
-    --destructive: 0 72% 51%;
+    --ring: 173 82% 40%;
+
+    /* ---------- Color: electric + status ---------- */
+    --deal: 38 96% 52%;                   /* amber — "best price" */
+    --deal-foreground: 220 52% 8%;
+    --electric: 188 95% 48%;              /* cyan spark */
+    --lime: 84 80% 50%;                   /* lime spark */
+    --success: 152 62% 38%;
+    --success-foreground: 0 0% 100%;
+    --warning: 32 95% 48%;
+    --warning-foreground: 220 52% 8%;
+    --destructive: 0 72% 51%;             /* danger */
     --destructive-foreground: 0 0% 98%;
-    --border: 214 32% 91%;
-    --input: 214 32% 91%;
-    --ring: 173 80% 40%;
+
+    /* ---------- Neutral ramp (ink-tinted grays) ---------- */
+    --gray-50: 210 40% 98%;
+    --gray-100: 210 36% 95%;
+    --gray-200: 214 30% 89%;
+    --gray-300: 214 24% 78%;
+    --gray-400: 215 18% 62%;
+    --gray-500: 215 16% 47%;
+    --gray-600: 217 20% 34%;
+    --gray-700: 220 28% 24%;
+    --gray-800: 221 38% 15%;
+    --gray-900: 220 52% 8%;
+
     --chart-1: 222 47% 30%;
     --chart-2: 173 80% 40%;
     --chart-3: 12 76% 61%;
     --chart-4: 43 74% 66%;
     --chart-5: 27 87% 67%;
-    --radius: 0.625rem;
-    --hero-bg: linear-gradient(135deg, hsl(222 47% 11%) 0%, hsl(213 50% 22%) 100%);
-    --hero-foreground: 0 0% 100%;
-    --hero-card-bg: rgba(255, 255, 255, 0.1);
-    --hero-card-border: rgba(255, 255, 255, 0.15);
+
+    /* ---------- Spacing (4/8 px grid) ---------- */
+    --space-1: 4px;
+    --space-2: 8px;
+    --space-3: 12px;
+    --space-4: 16px;
+    --space-5: 20px;
+    --space-6: 24px;
+    --space-8: 32px;
+    --space-10: 40px;
+    --space-12: 48px;
+    --space-16: 64px;
+    --space-24: 96px;
+
+    /* ---------- Radius ---------- */
+    --radius-xs: 8px;
+    --radius-sm: 12px;
+    --radius: 16px;
+    --radius-lg: 24px;
+
+    /* ---------- Type scale ---------- */
+    --text-xs: 0.75rem;
+    --text-sm: 0.875rem;
+    --text-base: 1rem;
+    --text-md: 1.125rem;
+    --text-lg: 1.25rem;
+    --text-xl: 1.5rem;
+    --text-2xl: 2rem;
+    --text-3xl: 2.5rem;
+    --text-hero: clamp(2.5rem, 5.4vw, 4.5rem);
+
+    /* ---------- Motion ---------- */
+    --dur-fast: 150ms;
+    --dur-base: 250ms;
+    --dur-slow: 400ms;
+    --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+    --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+    --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+    --ease: var(--dur-base) var(--ease-out); /* legacy shorthand used site-wide */
+
+    /* ---------- Z-index scale ---------- */
+    --z-base: 0;
+    --z-raised: 10;
+    --z-sticky: 40;
+    --z-drawer: 50;
+    --z-modal: 60;
+    --z-popover: 70;
+    --z-tooltip: 80;
+    --z-toast: 90;
+
+    /* ---------- Layered shadows ---------- */
+    --shadow-1: 0 1px 2px rgba(11, 18, 32, 0.05), 0 1px 1px rgba(11, 18, 32, 0.03);
+    --shadow-2: 0 2px 4px rgba(11, 18, 32, 0.04), 0 8px 20px rgba(11, 18, 32, 0.06);
+    --shadow-3: 0 4px 8px rgba(11, 18, 32, 0.05), 0 16px 40px rgba(11, 18, 32, 0.1);
+    --glow-sm: 0 0 0 1px rgba(20, 209, 184, 0.35), 0 4px 16px rgba(20, 209, 184, 0.28);
+    --glow-md: 0 0 0 1px rgba(20, 209, 184, 0.45), 0 8px 32px rgba(20, 209, 184, 0.35);
+    --glow-deal: 0 0 0 1px rgba(245, 158, 11, 0.45), 0 6px 24px rgba(245, 158, 11, 0.35);
+    --surface-shadow: var(--shadow-2);
+    --surface-shadow-hover: 0 12px 28px rgba(20, 209, 184, 0.16), var(--shadow-2);
+
+    /* ---------- Borders ---------- */
+    --border-hairline: 1px solid hsl(var(--border));
+    --border-strong: 1px solid hsl(var(--foreground) / 0.18);
+    --border-glow: 1px solid hsl(var(--accent) / 0.45);
+    --border-dashed: 1px dashed hsl(var(--foreground) / 0.25);
+
+    /* ---------- Glass ---------- */
+    --glass-bg: rgba(255, 255, 255, 0.68);
+    --glass-border: rgba(15, 23, 42, 0.08);
+    --glass-blur: 16px;
+
+    /* ---------- Background: PCB traces + mesh ---------- */
+    --pcb-opacity: 0.05;
+    --dot-color: rgba(15, 23, 42, 0.5);
+    --dot-opacity: 0.06;
+    --mesh-1: rgba(20, 209, 184, 0.16);
+    --mesh-2: rgba(34, 211, 238, 0.12);
+    --mesh-3: rgba(245, 158, 11, 0.08);
+
+    /* ---------- Existing hero tokens (kept for current pages) ---------- */
+    --hero-bg: linear-gradient(180deg, #f8fafc 0%, #eef4f8 72%, #f8fafc 100%);
+    --hero-foreground: 222 47% 11%;
+    --hero-muted: 215 16% 35%;
+    --hero-card-bg: #ffffff;
+    --hero-card-border: rgba(15, 23, 42, 0.08);
+    --hero-glow: rgba(20, 209, 184, 0.18);
+    --hero-grid: rgba(15, 23, 42, 0.45);
+    --hero-word: linear-gradient(135deg, #0f766e 0%, #14d1b8 70%);
+
+    --container: 1280px;
   }
+
   .dark {
-    --background: 222 47% 7%;
-    --foreground: 210 40% 98%;
-    --card: 222 47% 11%;
-    --card-foreground: 210 40% 98%;
-    --popover: 222 47% 11%;
-    --popover-foreground: 210 40% 98%;
-    --primary: 210 40% 98%;
-    --primary-foreground: 222 47% 11%;
-    --secondary: 217 33% 17%;
-    --secondary-foreground: 210 40% 98%;
-    --muted: 217 33% 15%;
-    --muted-foreground: 215 20% 65%;
-    --accent: 173 80% 45%;
-    --accent-foreground: 222 47% 7%;
-    --destructive: 0 62% 50%;
+    --background: 220 52% 8%;
+    --foreground: 215 52% 94%;
+    --card: 219 46% 12%;
+    --card-foreground: 215 52% 94%;
+    --popover: 219 46% 12%;
+    --popover-foreground: 215 52% 94%;
+    --secondary: 218 36% 16%;
+    --secondary-foreground: 215 52% 94%;
+    --muted: 218 36% 16%;
+    --muted-foreground: 215 20% 68%;
+    --border: 217 28% 21%;
+    --input: 217 26% 27%;
+
+    --primary: 173 82% 45%;
+    --primary-foreground: 220 52% 8%;
+    --accent: 173 82% 45%;
+    --accent-foreground: 220 52% 8%;
+    --ring: 173 82% 50%;
+
+    --deal: 41 96% 58%;
+    --electric: 188 95% 55%;
+    --lime: 84 80% 58%;
+    --success: 152 60% 48%;
+    --success-foreground: 220 52% 8%;
+    --warning: 38 95% 56%;
+    --destructive: 0 70% 56%;
     --destructive-foreground: 210 40% 98%;
-    --border: 217 33% 22%;
-    --input: 217 33% 22%;
-    --ring: 173 80% 45%;
+
     --chart-1: 210 40% 70%;
     --chart-2: 173 70% 55%;
     --chart-3: 12 70% 60%;
     --chart-4: 43 70% 66%;
     --chart-5: 27 80% 65%;
-    --hero-bg: linear-gradient(135deg, hsl(222 47% 11%) 0%, hsl(213 50% 20%) 100%);
-    --hero-foreground: 0 0% 100%;
-    --hero-card-bg: rgba(255, 255, 255, 0.08);
-    --hero-card-border: rgba(255, 255, 255, 0.12);
+
+    --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.4);
+    --shadow-2: 0 2px 4px rgba(0, 0, 0, 0.3), 0 8px 24px rgba(0, 0, 0, 0.35);
+    --shadow-3: 0 4px 8px rgba(0, 0, 0, 0.35), 0 20px 48px rgba(0, 0, 0, 0.5);
+    --glow-sm: 0 0 0 1px rgba(45, 226, 201, 0.4), 0 4px 20px rgba(20, 209, 184, 0.35);
+    --glow-md: 0 0 0 1px rgba(45, 226, 201, 0.5), 0 8px 40px rgba(20, 209, 184, 0.45);
+    --surface-shadow: var(--shadow-1);
+    --surface-shadow-hover: 0 12px 32px rgba(20, 209, 184, 0.18);
+
+    --border-strong: 1px solid hsl(var(--foreground) / 0.22);
+
+    --glass-bg: rgba(15, 25, 43, 0.62);
+    --glass-border: rgba(255, 255, 255, 0.09);
+
+    --pcb-opacity: 0.05;
+    --dot-color: rgba(230, 237, 247, 0.9);
+    --dot-opacity: 0.05;
+    --mesh-1: rgba(20, 209, 184, 0.2);
+    --mesh-2: rgba(56, 189, 248, 0.14);
+    --mesh-3: rgba(245, 158, 11, 0.07);
+
+    --hero-bg: linear-gradient(180deg, #0a1220 0%, #0d1829 55%, #0a1220 100%);
+    --hero-foreground: 215 52% 94%;
+    --hero-muted: 215 20% 65%;
+    --hero-card-bg: rgba(255, 255, 255, 0.04);
+    --hero-card-border: rgba(255, 255, 255, 0.08);
+    --hero-glow: rgba(20, 209, 184, 0.15);
+    --hero-grid: rgba(230, 237, 247, 0.9);
+    --hero-word: linear-gradient(135deg, #14d1b8 0%, #5eead4 55%, #99f6e4 100%);
   }
 }
 
 @tailwind components;
 @tailwind utilities;
 
+/* ==========================================================================
+   Base
+   ========================================================================== */
 @layer base {
   * {
     @apply border-border;
   }
+
+  html {
+    scroll-behavior: smooth;
+    -webkit-text-size-adjust: 100%;
+  }
+
   body {
     @apply bg-background text-foreground;
     font-feature-settings: 'rlig' 1, 'calt' 1;
+    text-rendering: optimizeLegibility;
+    position: relative;
   }
-  /* Smooth font rendering for Arabic */
+
+  /* Body fonts: Arabic first in AR, Inter first in EN (Arabic glyph fallback) */
   html[lang='ar'] body {
-    font-family: 'Cairo', 'Tajawal', system-ui, sans-serif;
+    font-family: var(--font-arabic), var(--font-cairo), 'IBM Plex Sans Arabic', 'Cairo', 'Tajawal',
+      system-ui, sans-serif;
   }
   html[lang='en'] body {
-    font-family: 'Cairo', 'Inter', system-ui, sans-serif;
+    font-family: var(--font-sans), var(--font-inter), 'Inter', var(--font-arabic), var(--font-cairo),
+      system-ui, sans-serif;
+  }
+
+  /* Display headings */
+  h1,
+  h2,
+  h3,
+  .font-display {
+    font-family: var(--font-display), var(--font-arabic), system-ui, sans-serif;
+    letter-spacing: -0.015em;
+  }
+  html[lang='ar'] h1,
+  html[lang='ar'] h2,
+  html[lang='ar'] h3,
+  html[lang='ar'] .font-display {
+    font-family: var(--font-arabic), var(--font-cairo), system-ui, sans-serif;
+    letter-spacing: 0; /* Arabic must never be tracked */
+    font-weight: 700;
+  }
+
+  /* Mono: prices, SKUs, specs. Always LTR + tabular so digits don't flip in RTL */
+  .font-mono,
+  .price,
+  .sku,
+  .spec {
+    font-family: var(--font-mono), ui-monospace, 'SF Mono', Menlo, monospace;
+    font-variant-numeric: tabular-nums;
+    unicode-bidi: isolate;
+  }
+  .price,
+  .sku {
+    direction: ltr;
+  }
+
+  a,
+  button,
+  [role='button'],
+  input,
+  select,
+  textarea,
+  summary {
+    transition:
+      color var(--dur-base) var(--ease-out),
+      background-color var(--dur-base) var(--ease-out),
+      border-color var(--dur-base) var(--ease-out),
+      box-shadow var(--dur-base) var(--ease-out),
+      transform var(--dur-fast) var(--ease-out),
+      opacity var(--dur-base) var(--ease-out);
+  }
+
+  :focus-visible {
+    outline: 2px solid hsl(var(--ring));
+    outline-offset: 2px;
+  }
+
+  ::selection {
+    background: hsl(var(--primary) / 0.28);
+  }
+
+  /* ----- Global circuit background (fixed, sits behind everything) ----- */
+  body::before,
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: -1;
+  }
+  /* layer 1: faint dotted grid (PCB traces: use .bg-pcb on sections) */
+  body::before {
+    background-image: radial-gradient(circle, var(--dot-color) 1px, transparent 1.2px);
+    background-size: 24px 24px;
+    opacity: var(--dot-opacity);
+  }
+  /* layer 2: gradient mesh blobs */
+  body::after {
+    background:
+      radial-gradient(40vmax 40vmax at 8% -5%, var(--mesh-1), transparent 60%),
+      radial-gradient(36vmax 36vmax at 105% 20%, var(--mesh-2), transparent 60%),
+      radial-gradient(30vmax 30vmax at 40% 110%, var(--mesh-3), transparent 60%);
   }
 }
 
-/* Hero section uses CSS variables for theme-aware rendering */
+/* PCB trace overlay as its own utility so stroke color follows the theme */
 @layer components {
+  .bg-pcb {
+    position: relative;
+    isolation: isolate;
+  }
+  .bg-pcb::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    opacity: var(--pcb-opacity);
+    background-repeat: repeat;
+    background-size: 240px 240px;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='240' viewBox='0 0 240 240' fill='none' stroke='%2314d1b8' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M0 40h60l20 20h50M130 60l20-20h90M0 120h40l24 24h56l16-16h104M60 240v-56l20-20M170 0v48l22 22h48M200 240v-40l-24-24h-36'/%3E%3Ccircle cx='60' cy='40' r='3'/%3E%3Ccircle cx='130' cy='60' r='3'/%3E%3Ccircle cx='120' cy='144' r='3'/%3E%3Ccircle cx='170' cy='48' r='3'/%3E%3Ccircle cx='140' cy='176' r='3'/%3E%3Crect x='36' y='112' width='8' height='8' rx='1'/%3E%3C/svg%3E");
+  }
+}
+
+/* ==========================================================================
+   Components
+   ========================================================================== */
+@layer components {
+  /* ----- Glass ----- */
+  .glass {
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(160%);
+    backdrop-filter: blur(var(--glass-blur)) saturate(160%);
+    box-shadow: var(--shadow-2);
+  }
+
+  /* ----- Form field base (inputs, native selects, textareas) ----- */
+  .field {
+    display: flex;
+    width: 100%;
+    min-height: 44px;
+    padding-inline: 14px;
+    padding-block: 10px;
+    border-radius: var(--radius-sm);
+    border: 1px solid hsl(var(--input));
+    background: hsl(var(--background) / 0.6);
+    color: hsl(var(--foreground));
+    font-size: var(--text-sm);
+    box-shadow: var(--shadow-1);
+  }
+  .field::placeholder {
+    color: hsl(var(--muted-foreground) / 0.8);
+  }
+  .field:hover {
+    border-color: hsl(var(--foreground) / 0.25);
+  }
+  .field:focus-visible {
+    outline: none;
+    border-color: hsl(var(--ring));
+    box-shadow: 0 0 0 3px hsl(var(--ring) / 0.22), var(--shadow-1);
+  }
+  .field:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+  }
+  .field[aria-invalid='true'] {
+    border-color: hsl(var(--destructive));
+    box-shadow: 0 0 0 3px hsl(var(--destructive) / 0.18);
+  }
+
+  /* ----- Skeleton shimmer ----- */
+  .skeleton {
+    position: relative;
+    overflow: hidden;
+    background: hsl(var(--muted));
+    border-radius: var(--radius-sm);
+  }
+  .skeleton::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    transform: translateX(-100%);
+    background: linear-gradient(90deg, transparent, hsl(var(--foreground) / 0.07), transparent);
+    animation: shimmer 1.6s var(--ease-in-out) infinite;
+  }
+  html[dir='rtl'] .skeleton::after {
+    transform: translateX(100%);
+    animation-name: shimmer-rtl;
+  }
+
+  /* ----- Hero (existing class names preserved) ----- */
   .hero-section {
+    position: relative;
+    isolation: isolate;
+    overflow: hidden;
     background: var(--hero-bg);
     color: hsl(var(--hero-foreground));
+  }
+  .hero-section::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    background-image: radial-gradient(circle, var(--hero-grid) 1px, transparent 1.2px);
+    background-size: 22px 22px;
+    opacity: 0.045;
+    pointer-events: none;
+  }
+  .hero-section::after {
+    content: '';
+    position: absolute;
+    inset-inline: 0;
+    bottom: -1px;
+    z-index: 1;
+    height: 96px;
+    background: linear-gradient(to bottom, transparent, hsl(var(--background)));
+    pointer-events: none;
+  }
+  .hero-glow {
+    position: absolute;
+    inset-inline-end: 8%;
+    top: 50%;
+    z-index: 0;
+    width: min(420px, 50vw);
+    height: min(420px, 50vw);
+    translate: 0 -50%;
+    border-radius: 999px;
+    background: var(--hero-glow);
+    filter: blur(120px);
+    pointer-events: none;
+  }
+  .hero-word-accent {
+    background: var(--hero-word);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
   }
   .hero-card {
     background: var(--hero-card-bg);
     border: 1px solid var(--hero-card-border);
+    box-shadow: var(--surface-shadow);
   }
   .hero-card-text {
     color: hsl(var(--hero-foreground));
@@ -100,29 +476,373 @@
     color: hsl(var(--accent));
   }
   .hero-subtitle {
-    color: hsl(var(--hero-foreground) / 0.85);
+    color: hsl(215 16% 35% / 0.88);
+    font-size: 1.125rem;
+    line-height: 1.6;
+  }
+  .dark .hero-subtitle {
+    color: rgb(203 213 225 / 0.7);
   }
   .hero-badge {
-    background: hsl(var(--accent) / 0.2);
+    background: hsl(var(--accent) / 0.1);
+    color: hsl(var(--hero-muted));
+    border: 1px solid hsl(var(--accent) / 0.2);
+  }
+
+  /* ----- Surface card (existing) ----- */
+  .surface-card {
+    background: var(--hero-card-bg);
+    border: 1px solid var(--hero-card-border);
+    box-shadow: var(--surface-shadow);
+    border-radius: var(--radius);
+    transition:
+      transform var(--dur-base) var(--ease-out),
+      border-color var(--dur-base) var(--ease-out),
+      box-shadow var(--dur-base) var(--ease-out);
+  }
+  .surface-card:hover {
+    transform: translateY(-4px);
+    border-color: hsl(var(--accent) / 0.4);
+    box-shadow: var(--surface-shadow-hover);
+  }
+
+  .icon-well {
+    display: flex;
+    height: 44px;
+    width: 44px;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--radius-sm);
+    background: hsl(var(--accent) / 0.1);
     color: hsl(var(--accent));
+  }
+
+  .dev-banner {
+    @apply bg-amber-500 text-amber-950 text-center text-xs font-medium py-1.5 px-4;
   }
 }
 
-/* RTL-aware utilities */
+/* ==========================================================================
+   Utilities
+   ========================================================================== */
 @layer utilities {
-  .text-start { text-align: start; }
-  .text-end { text-align: end; }
+  .text-start {
+    text-align: start;
+  }
+  .text-end {
+    text-align: end;
+  }
   .flex-row-rtl {
     flex-direction: row;
   }
   html[dir='rtl'] .flex-row-rtl {
     flex-direction: row-reverse;
   }
+  .rtl-flip {
+    transform: scaleX(1);
+  }
+  html[dir='rtl'] .rtl-flip {
+    transform: scaleX(-1);
+  }
+
+  .shadow-glow {
+    box-shadow: var(--glow-sm);
+  }
+  .text-gradient {
+    background: var(--hero-word);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
 }
 
-/* Dev banner */
-@layer components {
-  .dev-banner {
-    @apply bg-amber-500 text-amber-950 text-center text-xs font-medium py-1.5 px-4;
+/* ==========================================================================
+   Keyframes (shimmer is CSS-only; others are also exposed via Tailwind)
+   ========================================================================== */
+@keyframes shimmer {
+  to {
+    transform: translateX(100%);
   }
+}
+@keyframes shimmer-rtl {
+  to {
+    transform: translateX(-100%);
+  }
+}
+
+/* ==========================================================================
+   Reduced motion — kill movement, keep color/opacity feedback
+   ========================================================================== */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  .surface-card:hover {
+    transform: none;
+  }
+  .skeleton::after {
+    display: none;
+  }
+}
+
+/* ==========================================================================
+   Part 2 — Navbar + Hero additions
+   ========================================================================== */
+@layer components {
+  /* gradient headline word with a slow shimmer sweep */
+  .text-shimmer {
+    background-image: linear-gradient(
+      100deg,
+      hsl(var(--accent)) 0%,
+      hsl(var(--electric)) 35%,
+      #ffffff 50%,
+      hsl(var(--electric)) 65%,
+      hsl(var(--accent)) 100%
+    );
+    background-size: 250% 100%;
+    background-position: 100% 0;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    animation: text-shimmer 5s var(--ease-in-out) infinite;
+  }
+  .dark .text-shimmer {
+    background-image: linear-gradient(
+      100deg,
+      #14d1b8 0%,
+      #5eead4 35%,
+      #ffffff 50%,
+      #5eead4 65%,
+      #14d1b8 100%
+    );
+  }
+  html[dir='rtl'] .text-shimmer {
+    animation-name: text-shimmer-rtl;
+  }
+
+  /* CTA shine sweep */
+  .btn-shine {
+    overflow: hidden;
+  }
+  .btn-shine::after {
+    content: '';
+    position: absolute;
+    inset-block: 0;
+    inset-inline-start: -60%;
+    width: 40%;
+    transform: skewX(-20deg);
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.45), transparent);
+    transition: inset-inline-start 0.7s var(--ease-out);
+    pointer-events: none;
+  }
+  .btn-shine:hover::after {
+    inset-inline-start: 130%;
+  }
+
+  /* animated gradient mesh */
+  .hero-mesh {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+  }
+  .mesh-blob {
+    position: absolute;
+    border-radius: 9999px;
+    filter: blur(90px);
+    will-change: transform;
+    animation: mesh-drift 18s var(--ease-in-out) infinite alternate;
+  }
+  .mesh-a {
+    width: 520px;
+    height: 520px;
+    top: -18%;
+    inset-inline-start: 2%;
+    background: hsl(var(--primary) / 0.3);
+  }
+  .mesh-b {
+    width: 460px;
+    height: 460px;
+    top: 4%;
+    inset-inline-end: -4%;
+    background: hsl(var(--electric) / 0.24);
+    animation-duration: 22s;
+    animation-delay: -6s;
+  }
+  .mesh-c {
+    width: 380px;
+    height: 380px;
+    bottom: -22%;
+    inset-inline-start: 38%;
+    background: hsl(var(--deal) / 0.14);
+    animation-duration: 26s;
+    animation-delay: -12s;
+  }
+
+  /* electrons travelling along circuit traces */
+  .trace-flow {
+    fill: none;
+    stroke: hsl(var(--electric));
+    stroke-width: 2.4;
+    stroke-linecap: round;
+    stroke-dasharray: 10 190;
+    opacity: 0;
+    animation: trace-flow 7s linear infinite;
+    animation-delay: var(--flow-delay, 3s);
+    filter: drop-shadow(0 0 4px hsl(var(--electric)));
+  }
+}
+
+@keyframes text-shimmer {
+  0%,
+  35% {
+    background-position: 100% 0;
+  }
+  70%,
+  100% {
+    background-position: 0% 0;
+  }
+}
+@keyframes text-shimmer-rtl {
+  0%,
+  35% {
+    background-position: 0% 0;
+  }
+  70%,
+  100% {
+    background-position: 100% 0;
+  }
+}
+@keyframes mesh-drift {
+  to {
+    transform: translate3d(48px, -36px, 0) scale(1.18);
+  }
+}
+@keyframes trace-flow {
+  0% {
+    stroke-dashoffset: 0;
+    opacity: 0;
+  }
+  8% {
+    opacity: 0.95;
+  }
+  100% {
+    stroke-dashoffset: -200;
+    opacity: 0.95;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .trace-flow {
+    display: none;
+  }
+  .text-shimmer {
+    animation: none;
+    background-position: 50% 0;
+  }
+}
+
+/* ==========================================================================
+   Part 3 — categories / product cards / filters
+   ========================================================================== */
+@layer utilities {
+  .no-scrollbar {
+    scrollbar-width: none;
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* =====================================================================
+   PART 5 — final polish
+   ===================================================================== */
+@layer base {
+  /* thin, themed scrollbar */
+  html {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--muted-foreground) / 0.45) transparent;
+    scroll-padding-top: 5rem; /* sticky header */
+  }
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb {
+    background: hsl(var(--muted-foreground) / 0.35);
+    border-radius: 999px;
+    border: 3px solid transparent;
+    background-clip: content-box;
+  }
+  ::-webkit-scrollbar-thumb:hover { background: hsl(var(--accent) / 0.7); background-clip: content-box; border: 3px solid transparent; }
+
+  /* one consistent, always-visible keyboard focus ring (mouse clicks don't trigger it) */
+  :focus-visible {
+    outline: 2px solid hsl(var(--ring));
+    outline-offset: 2px;
+  }
+  /* RTL: scrollbars/spinners already follow html[dir]; keep numbers/codes LTR where marked */
+  [dir='ltr'] { unicode-bidi: isolate; }
+}
+
+@layer components {
+  /* skip link (first focusable element in <body>) */
+  .skip-link {
+    position: fixed;
+    inset-inline-start: 1rem;
+    top: -4rem;
+    z-index: var(--z-toast);
+    padding: 0.6rem 1rem;
+    border-radius: var(--radius);
+    background: hsl(var(--primary));
+    color: hsl(var(--primary-foreground));
+    font-weight: 600;
+    transition: top 0.2s ease;
+  }
+  .skip-link:focus { top: 1rem; }
+
+  /* light rounded plate for white-background product photos (always light, so JPGs with white bg don't glow in dark mode) */
+  .img-plate {
+    background: #f1f5f9;
+    border-radius: var(--radius-sm);
+  }
+
+  /* micro-interactions: transform/opacity only */
+  .hover-lift { transition: transform var(--dur-base) cubic-bezier(.22,1,.36,1), box-shadow var(--dur-base); }
+  .hover-lift:hover { transform: translateY(-3px); box-shadow: var(--shadow-2); }
+  .link-grow { background: linear-gradient(currentColor, currentColor) no-repeat bottom left / 0 2px; transition: background-size var(--dur-base) ease; }
+  .link-grow:hover { background-size: 100% 2px; }
+  html[dir='rtl'] .link-grow { background-position: bottom right; }
+}
+
+/* no grey tap flash on touch */
+button, [role='button'] { -webkit-tap-highlight-color: transparent; }
+
+/* ------------------------------------------------ DARK MODE image treatment */
+/* softer photos + white-background packshots on a light rounded plate */
+.dark img:not([data-no-dim]) { filter: brightness(0.92) contrast(1.02); }
+.dark img.object-contain:not([data-no-plate]) {
+  background-color: #f1f5f9;   /* plate */
+  border-radius: var(--radius-sm);
+}
+.dark img.object-contain[class*='p-'] { box-sizing: border-box; }
+.dark .no-dim img { filter: none; }
+
+/* elevated card layers in dark: card sits above background, popovers above card */
+.dark .glass { box-shadow: 0 1px 0 rgba(255,255,255,0.05) inset, var(--shadow-2); }
+
+/* ------------------------------------------------ reduced motion (extra, on top of Part 1's block) */
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto !important; }
+  .hover-lift:hover { transform: none; }
+}
+
+/* print: hide chrome */
+@media print {
+  header, footer, .skip-link { display: none !important; }
 }
